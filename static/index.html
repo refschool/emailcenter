@@ -36,23 +36,8 @@
       </div>
 
       <div class="field-group">
-        <label>To</label>
-        <input type="email" id="to-address" placeholder="recipient@example.com">
-      </div>
-
-      <div class="field-group">
-        <label>CC <span class="hint">comma-separated</span></label>
-        <input type="text" id="cc-addresses" placeholder="a@example.com, b@example.com">
-      </div>
-
-      <div class="field-group">
-        <label>Sujet</label>
-        <input type="text" id="email-subject" placeholder="Objet de l'email">
-      </div>
-
-      <div class="field-group">
-        <label>Template data <span class="hint">JSON passed to Jinja2</span></label>
-        <textarea id="template-data" rows="9" spellcheck="false" placeholder="{}"></textarea>
+        <label>Payload <span class="hint">JSON complet</span></label>
+        <textarea id="payload-raw" rows="14" spellcheck="false" placeholder="{}"></textarea>
       </div>
 
       <div class="field-group">
@@ -83,6 +68,7 @@
         <span>Preview</span>
         <button class="btn btn-sm btn-outline" id="btn-preview">Refresh</button>
       </div>
+      <div id="preview-to" class="preview-to"></div>
       <div id="preview-subject" class="preview-subject"></div>
       <iframe id="preview-frame" sandbox="allow-same-origin"></iframe>
     </div>

@@ -107,18 +107,10 @@ async function onTemplateChange(templateId) {
   if (!templateId) return;
   try {
     const payload = await apiFetch('GET', `/api/payloads/${templateId}`);
-    const data = payload.data ?? payload;
-    document.getElementById('template-data').value = JSON.stringify(data, null, 2);
-    if (payload.to)      document.getElementById('to-address').value   = payload.to;
-    if (payload.subject) document.getElementById('email-subject').value = payload.subject;
-    if (payload.cc) {
-      document.getElementById('cc-addresses').value =
-        Array.isArray(payload.cc) ? payload.cc.join(', ') : payload.cc;
-    }
+    document.getElementById('payload-raw').value = JSON.stringify(payload, null, 2);
 
     // Reset payload attachments, keep user uploads
     state.attachments = state.attachments.filter(a => a.type === 'upload');
-
     if (Array.isArray(payload.attachments)) {
       payload.attachments.forEach(da => {
         state.attachments.unshift({
@@ -140,13 +132,17 @@ async function doPreview() {
   const templateId = document.getElementById('template-select').value;
   if (!templateId) return;
 
-  let data;
-  try { data = JSON.parse(document.getElementById('template-data').value || '{}'); }
-  catch { setResult('Invalid JSON in template data', true); return; }
+  let payload;
+  try { payload = JSON.parse(document.getElementById('payload-raw').value || '{}'); }
+  catch { setResult('Invalid JSON in payload', true); return; }
+
+  const toAddress = (payload.to || '').trim();
+  const subject   = (payload.subject || '').trim();
+  const data      = payload.data || {};
+
+  document.getElementById('preview-to').textContent = toAddress ? `To: ${toAddress}` : '';
 
   try {
-    const toAddress = document.getElementById('to-address').value.trim();
-    const subject   = document.getElementById('email-subject').value.trim();
     const r = await apiFetch('POST', '/api/preview', { template_id: templateId, data, to_address: toAddress, subject });
     document.getElementById('preview-subject').textContent =
       r.subject ? `Subject: ${r.subject}` : '';
@@ -224,24 +220,26 @@ function renderAttachments() {
 
 async function composeSend(isDraft) {
   const templateId = document.getElementById('template-select').value;
-  const toAddress  = document.getElementById('to-address').value.trim();
-
   if (!templateId) { setResult('Select a template first.', true); return; }
-  if (!isDraft && !toAddress) { setResult('Recipient (To) is required.', true); return; }
 
-  let templateData, businessMeta;
-  try {
-    templateData = JSON.parse(document.getElementById('template-data').value || '{}');
-    businessMeta = document.getElementById('business-metadata').value.trim() || '{}';
-    JSON.parse(businessMeta); // validate JSON
-  } catch {
-    setResult('Invalid JSON — check template data or business metadata.', true);
-    return;
+  let payload;
+  try { payload = JSON.parse(document.getElementById('payload-raw').value || '{}'); }
+  catch { setResult('Invalid JSON in payload', true); return; }
+
+  const toAddress   = (payload.to || '').trim();
+  const subject     = (payload.subject || '').trim();
+  const templateData = payload.data || {};
+  const ccRaw       = payload.cc;
+  const ccList      = Array.isArray(ccRaw)
+    ? ccRaw
+    : (ccRaw ? String(ccRaw).split(',').map(s => s.trim()).filter(Boolean) : []);
+
+  if (!isDraft && !toAddress) { setResult('Recipient (To) is required in the payload.', true); return; }
+
+  let businessMeta = document.getElementById('business-metadata').value.trim() || '{}';
+  try { JSON.parse(businessMeta); } catch {
+    setResult('Invalid JSON in business metadata.', true); return;
   }
-
-  const ccRaw  = document.getElementById('cc-addresses').value.trim();
-  const ccList = ccRaw ? ccRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
-  const subject = document.getElementById('email-subject').value.trim();
 
   const fd = new FormData();
   fd.append('template_id',       templateId);
@@ -273,17 +271,13 @@ async function composeSend(isDraft) {
   try {
     const r = await apiFetch('POST', '/api/compose/send', fd, true);
     setResult(
-      isDraft
-        ? `Draft saved (id=${r.id})`
-        : `Sent successfully (id=${r.id})`,
+      isDraft ? `Draft saved (id=${r.id})` : `Sent successfully (id=${r.id})`,
       false
     );
     if (!isDraft) {
-      // Clear form after successful send
-      document.getElementById('template-data').value    = '';
+      document.getElementById('payload-raw').value      = '';
       document.getElementById('business-metadata').value = '';
-      document.getElementById('to-address').value        = '';
-      document.getElementById('cc-addresses').value      = '';
+      document.getElementById('preview-to').textContent  = '';
       state.attachments = [];
       renderAttachments();
     }
@@ -536,6 +530,8 @@ document.getElementById('template-select').addEventListener('change', e => {
   if (!e.target.value) {
     state.attachments = state.attachments.filter(a => a.type === 'upload');
     renderAttachments();
+    document.getElementById('payload-raw').value     = '';
+    document.getElementById('preview-to').textContent = '';
   } else {
     onTemplateChange(e.target.value);
   }
