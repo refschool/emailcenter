@@ -72,10 +72,11 @@ def api_config():
 
 @app.route('/api/file')
 def api_file():
-    rel = request.args.get('path', '')
+    raw          = request.args.get('path', '')
     project_root = Path(__file__).parent.resolve()
-    path = (project_root / rel).resolve()
-    if not path.is_relative_to(project_root) or not path.exists():
+    p    = Path(raw).expanduser()
+    path = p.resolve() if p.is_absolute() else (project_root / p).resolve()
+    if not path.exists():
         return 'Not found', 404
     return send_file(path, conditional=True)
 
@@ -166,8 +167,9 @@ def api_compose_send():
 
     import mimetypes
     for da in default_atts:
-        path = (project_root / da['path']).resolve()
-        if not path.is_relative_to(project_root) or not path.exists():
+        p = Path(da['path']).expanduser()
+        path = p.resolve() if p.is_absolute() else (project_root / p).resolve()
+        if not path.exists():
             continue
         mime = mimetypes.guess_type(str(path))[0] or 'application/octet-stream'
         saved_attachments.append({

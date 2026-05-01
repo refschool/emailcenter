@@ -1,0 +1,19 @@
+{% set subject = "Emargement mois de " + mois %}
+<!DOCTYPE html>
+<html lang="fr">
+<body style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+
+  <p>Salut {{ prenom }},</p>
+
+  <p>Je te remercie pour l'émargement.</p>
+
+  <p>Cordialement<br>
+  <strong>Yvon Huynh</strong><br>
+  <a href="tel:+33679374873">+33 6 79 37 48 73</a></p>
+
+  <p style="color:#999; font-size:11px; margin-top:32px; border-top:1px solid #eee; padding-top:12px;">
+    Envoyé à {{ recipient_email }} — {{ now.strftime('%d/%m/%Y') }}
+  </p>
+
+</body>
+</html>
