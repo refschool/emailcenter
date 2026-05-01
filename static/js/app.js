@@ -365,6 +365,142 @@ async function triggerSync(silent = false) {
   }
 }
 
+// ── History ───────────────────────────────────────────────────────────────────
+
+const histState = { orderBy: 'created_at', direction: 'DESC' };
+
+async function loadHistory() {
+  const params = new URLSearchParams({
+    order_by:  histState.orderBy,
+    direction: histState.direction,
+  });
+  const dateFrom = document.getElementById('hist-date-from').value;
+  const dateTo   = document.getElementById('hist-date-to').value;
+  if (dateFrom) params.set('date_from', dateFrom);
+  if (dateTo)   params.set('date_to',   dateTo);
+
+  try {
+    const rows = await apiFetch('GET', `/api/composed?${params}`);
+    renderHistory(rows);
+  } catch (e) {
+    console.error('history error', e);
+  }
+}
+
+function renderHistory(rows) {
+  const tbody = document.getElementById('hist-tbody');
+  const empty = document.getElementById('hist-empty');
+  const count = document.getElementById('hist-count');
+  tbody.innerHTML = '';
+
+  count.textContent = rows.length ? `${rows.length} entrée${rows.length > 1 ? 's' : ''}` : '';
+
+  if (!rows.length) { empty.style.display = ''; return; }
+  empty.style.display = 'none';
+
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.innerHTML = `
+      <td>${r.id}</td>
+      <td>${esc(r.template_id || '')}</td>
+      <td title="${esc(r.to_address)}">${esc(r.to_address || '')}</td>
+      <td title="${esc(r.subject)}">${esc(r.subject || '')}</td>
+      <td>${statusBadge(r.status, r.is_draft)}</td>
+      <td class="col-date">${fmtDate(r.created_at)}</td>
+      <td class="col-date">${r.sent_at ? fmtDate(r.sent_at) : '—'}</td>
+    `;
+    tr.addEventListener('click', () => openPayloadModal(r));
+    tbody.appendChild(tr);
+  });
+
+  // Update sort indicators
+  document.querySelectorAll('#hist-table th.sortable').forEach(th => {
+    const col = th.dataset.col;
+    th.classList.toggle('sort-active', col === histState.orderBy);
+    th.dataset.dir = col === histState.orderBy ? histState.direction : '';
+  });
+}
+
+function statusBadge(status, isDraft) {
+  if (isDraft) return '<span class="status-badge status-draft">brouillon</span>';
+  const map = {
+    sent:    '<span class="status-badge status-sent">envoyé</span>',
+    failed:  '<span class="status-badge status-failed">échec</span>',
+    pending: '<span class="status-badge status-pending">en attente</span>',
+  };
+  return map[status] || `<span class="status-badge">${esc(status)}</span>`;
+}
+
+function openPayloadModal(row) {
+  const modal = document.getElementById('payload-modal');
+  document.getElementById('modal-title').textContent =
+    `#${row.id} — ${row.template_id || ''} → ${row.to_address || ''}`;
+
+  let payload = null;
+  try { payload = row.payload ? JSON.parse(row.payload) : null; } catch {}
+
+  const view = document.getElementById('payload-view');
+  if (payload) {
+    view.innerHTML = renderPayloadView(payload, row);
+  } else {
+    view.innerHTML = `<pre class="json-block">${esc(JSON.stringify({
+      template_data:     tryParse(row.template_data),
+      business_metadata: tryParse(row.business_metadata),
+    }, null, 2))}</pre>`;
+  }
+  modal.style.display = 'flex';
+}
+
+function renderPayloadView(payload, row) {
+  const data  = payload.data  || {};
+  const atts  = payload.attachments || [];
+  const biz   = tryParse(row.business_metadata) || {};
+
+  const dataRows = Object.entries(data).map(([k, v]) =>
+    `<tr><td class="pv-key">${esc(k)}</td><td>${esc(String(v))}</td></tr>`
+  ).join('');
+
+  const attList = atts.length
+    ? atts.map(a => `<li>${esc(a.filename || a.path)}</li>`).join('')
+    : '<li class="hint">aucune</li>';
+
+  const bizRows = Object.entries(biz).length
+    ? Object.entries(biz).map(([k, v]) =>
+        `<tr><td class="pv-key">${esc(k)}</td><td>${esc(String(v))}</td></tr>`
+      ).join('')
+    : '<tr><td colspan="2" class="hint">—</td></tr>';
+
+  return `
+    <div class="pv-section">
+      <div class="pv-label">Envoi</div>
+      <table class="pv-table">
+        <tr><td class="pv-key">Template</td><td>${esc(payload.template_id || '')}</td></tr>
+        <tr><td class="pv-key">À</td><td>${esc(payload.to || '')}</td></tr>
+        <tr><td class="pv-key">Sujet</td><td>${esc(payload.subject || row.subject || '')}</td></tr>
+        <tr><td class="pv-key">Statut</td><td>${statusBadge(row.status, row.is_draft)}</td></tr>
+        ${row.error_message ? `<tr><td class="pv-key">Erreur</td><td class="err">${esc(row.error_message)}</td></tr>` : ''}
+      </table>
+    </div>
+    <div class="pv-section">
+      <div class="pv-label">Données template</div>
+      <table class="pv-table">${dataRows || '<tr><td colspan="2" class="hint">—</td></tr>'}</table>
+    </div>
+    <div class="pv-section">
+      <div class="pv-label">Pièces jointes</div>
+      <ul class="pv-list">${attList}</ul>
+    </div>
+    <div class="pv-section">
+      <div class="pv-label">Metadata business</div>
+      <table class="pv-table">${bizRows}</table>
+    </div>
+  `;
+}
+
+function tryParse(str) {
+  try { return str ? JSON.parse(str) : null; } catch { return null; }
+}
+
 // ── Tab switching ─────────────────────────────────────────────────────────────
 
 function switchTab(tab) {
@@ -374,7 +510,8 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-panel').forEach(p =>
     p.classList.toggle('active', p.id === `tab-${tab}`)
   );
-  if (tab === 'mail') loadMessages();
+  if (tab === 'mail')    loadMessages();
+  if (tab === 'history') loadHistory();
 }
 
 function switchMailbox(mailbox) {
@@ -409,6 +546,30 @@ document.getElementById('btn-send').addEventListener('click',  () => composeSend
 document.getElementById('btn-draft').addEventListener('click', () => composeSend(true));
 document.getElementById('btn-sync').addEventListener('click',  () => triggerSync(false));
 document.getElementById('btn-filter').addEventListener('click', loadMessages);
+
+// History
+document.getElementById('btn-hist-filter').addEventListener('click', loadHistory);
+
+document.querySelectorAll('#hist-table th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (histState.orderBy === col) {
+      histState.direction = histState.direction === 'DESC' ? 'ASC' : 'DESC';
+    } else {
+      histState.orderBy  = col;
+      histState.direction = 'DESC';
+    }
+    loadHistory();
+  });
+});
+
+document.getElementById('modal-close').addEventListener('click', () => {
+  document.getElementById('payload-modal').style.display = 'none';
+});
+document.getElementById('payload-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget)
+    e.currentTarget.style.display = 'none';
+});
 
 document.getElementById('btn-add-file').addEventListener('click', () =>
   document.getElementById('file-input').click()

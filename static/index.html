@@ -19,6 +19,7 @@
 <nav class="tabs">
   <button class="tab-btn active" data-tab="compose">Compose</button>
   <button class="tab-btn" data-tab="mail">Mail</button>
+  <button class="tab-btn" data-tab="history">Historique</button>
 </nav>
 
 <!-- ── COMPOSE ───────────────────────────────────────────────────────────── -->
@@ -128,6 +129,53 @@
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ── HISTORIQUE ─────────────────────────────────────────────────────────── -->
+<div id="tab-history" class="tab-panel">
+  <div class="history-layout">
+
+    <div class="history-toolbar">
+      <input type="date" id="hist-date-from" title="Depuis">
+      <span class="toolbar-sep">→</span>
+      <input type="date" id="hist-date-to" title="Jusqu'à">
+      <button class="btn btn-sm btn-outline" id="btn-hist-filter">Filtrer</button>
+      <div class="toolbar-spacer"></div>
+      <span class="hint" id="hist-count"></span>
+    </div>
+
+    <div id="hist-table-wrap">
+      <table class="mail-table" id="hist-table">
+        <thead>
+          <tr>
+            <th class="sortable" data-col="id"          style="width:50px">#</th>
+            <th class="sortable" data-col="template_id" style="width:140px">Template</th>
+            <th class="sortable" data-col="to_address"  style="width:200px">Destinataire</th>
+            <th class="sortable" data-col="subject">Sujet</th>
+            <th class="sortable" data-col="status"      style="width:80px">Statut</th>
+            <th class="sortable" data-col="created_at"  style="width:140px">Créé</th>
+            <th class="sortable" data-col="sent_at"     style="width:140px">Envoyé</th>
+          </tr>
+        </thead>
+        <tbody id="hist-tbody"></tbody>
+      </table>
+      <div id="hist-empty" class="empty-state" style="display:none">Aucun email composé.</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Payload modal -->
+<div id="payload-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span id="modal-title">Payload</span>
+      <button class="btn btn-sm" id="modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="payload-view"></div>
+    </div>
   </div>
 </div>
 

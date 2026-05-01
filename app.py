@@ -276,6 +276,38 @@ def _insert_attachments(conn, email_id: int, att_rows: list) -> None:
               att['mime_type'], att['size_bytes'], att['metadata']))
 
 
+# ── Composed emails history ───────────────────────────────────────────────────
+
+_COMPOSED_COLS = {'id', 'template_id', 'to_address', 'subject', 'status', 'sent_at', 'created_at', 'is_draft'}
+
+@app.route('/api/composed')
+def api_composed():
+    date_from = request.args.get('date_from', '').strip()
+    date_to   = request.args.get('date_to',   '').strip()
+    order_by  = request.args.get('order_by',  'created_at')
+    direction = request.args.get('direction',  'DESC').upper()
+
+    if order_by  not in _COMPOSED_COLS: order_by  = 'created_at'
+    if direction not in ('ASC', 'DESC'): direction = 'DESC'
+
+    q      = 'SELECT * FROM composed_emails WHERE 1=1'
+    params: list = []
+
+    if date_from:
+        q += ' AND created_at >= ?'
+        params.append(date_from)
+    if date_to:
+        q += ' AND created_at <= ?'
+        params.append(date_to + 'T23:59:59')
+
+    q += f' ORDER BY {order_by} {direction} LIMIT 100'
+
+    conn = get_conn()
+    rows = [dict(r) for r in conn.execute(q, params).fetchall()]
+    conn.close()
+    return jsonify(rows)
+
+
 # ── Gmail ─────────────────────────────────────────────────────────────────────
 
 @app.route('/api/gmail/sync', methods=['POST'])
