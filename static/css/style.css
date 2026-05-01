@@ -1,0 +1,439 @@
+:root {
+  --bg:           #f4f4f5;
+  --surface:      #ffffff;
+  --border:       #e4e4e7;
+  --primary:      #4f46e5;
+  --primary-h:    #4338ca;
+  --text:         #18181b;
+  --text-muted:   #71717a;
+  --success:      #16a34a;
+  --error:        #dc2626;
+  --radius:       6px;
+  --header-h:     52px;
+  --nav-h:        44px;
+  --form-w:       420px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+header {
+  flex-shrink: 0;
+  height: var(--header-h);
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+}
+
+.brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Main tabs ───────────────────────────────────────────────────────────── */
+
+nav.tabs {
+  flex-shrink: 0;
+  height: var(--nav-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 4px;
+}
+
+.tab-btn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 500;
+}
+
+/* ── Tab panels ──────────────────────────────────────────────────────────── */
+
+.tab-panel {
+  display: none;
+  flex: 1;
+  overflow: hidden;
+}
+
+.tab-panel.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Compose layout ──────────────────────────────────────────────────────── */
+
+.compose-layout {
+  display: grid;
+  grid-template-columns: var(--form-w) 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Left column — form */
+.compose-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-group label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.field-group input,
+.field-group select,
+.field-group textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg);
+  transition: border-color 0.15s;
+}
+
+.field-group input:focus,
+.field-group select:focus,
+.field-group textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--surface);
+}
+
+.field-group textarea {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Attachments */
+.attachment-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#attachment-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.att-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.att-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.att-name {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.att-size {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+
+.att-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+
+/* Compose actions */
+.compose-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+#compose-result {
+  min-height: 20px;
+  font-size: 13px;
+}
+
+.ok  { color: var(--success); }
+.err { color: var(--error); }
+
+/* Right column — preview */
+.compose-preview {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.preview-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.preview-subject {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  min-height: 36px;
+}
+
+#preview-frame {
+  flex: 1;
+  border: none;
+  width: 100%;
+  background: #fff;
+}
+
+/* ── Mail layout ─────────────────────────────────────────────────────────── */
+
+.mail-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.mail-subtabs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 10px 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.subtab-btn {
+  padding: 6px 16px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: none;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  position: relative;
+  bottom: -1px;
+}
+
+.subtab-btn.active {
+  background: var(--surface);
+  border-color: var(--border);
+  border-bottom-color: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mail-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.mail-toolbar input[type="date"],
+.mail-toolbar input[type="text"] {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.mail-toolbar input[type="date"]:focus,
+.mail-toolbar input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.toolbar-sep  { color: var(--text-muted); font-size: 12px; }
+.toolbar-spacer { flex: 1; }
+
+#mail-table-wrap {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.mail-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.mail-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+  padding: 7px 16px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.mail-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  vertical-align: top;
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-table tr:hover td { background: var(--bg); }
+
+.mail-table .col-date    { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.mail-table .col-snippet { color: var(--text-muted); font-size: 12px; }
+
+.empty-state {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--text);
+  white-space: nowrap;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.btn:hover   { background: var(--bg); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-h); border-color: var(--primary-h); }
+
+.btn-outline       { background: transparent; }
+.btn-outline-white { background: transparent; border-color: rgba(255,255,255,0.5); color: #fff; }
+.btn-outline-white:hover { background: rgba(255,255,255,0.1); }
+
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+
+.badge {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.badge-ok  { background: rgba(22,163,74,0.25);  color: #bbf7d0; }
+.badge-err { background: rgba(220,38,38,0.25);  color: #fecaca; }
+.badge-dim { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); }

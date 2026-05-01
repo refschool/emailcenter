@@ -5,7 +5,10 @@ from config import config
 import pickle
 import os
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.readonly',
+]
 
 def get_credentials() -> Credentials:
     creds = None

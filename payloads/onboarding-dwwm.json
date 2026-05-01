@@ -1,0 +1,11 @@
+{
+  "to": "referencementschool@gmail.com",
+  "subject": "Onboarding {{ course }} ",
+  "data": {
+    "prenom": "",
+    "cours": "Symfony 6",
+    "identifiant": "refschool",
+    "mot_de_passe": "",
+    "course": "Symfony 6"
+  }
+}

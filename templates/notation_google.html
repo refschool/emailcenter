@@ -1,0 +1,36 @@
+{% set subject = "Note moi sur Google" %}
+<!DOCTYPE html>
+<html lang="fr">
+<body style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+
+  <p>Salut {{ prenom }},</p>
+
+  <p>
+    Je te serai reconnaissant si tu pouvais me donner un avis sur Google sur ma page Business,
+    pour ce faire il suffit de suivre le lien :
+  </p>
+
+  <p>
+    <a href="https://g.page/r/CT55Hh74wK2ZEAI/review"
+       style="display:inline-block; background:#4285F4; color:#fff; padding:10px 20px;
+              border-radius:6px; text-decoration:none; font-weight:500;">
+      ⭐ Laisser un avis Google
+    </a>
+  </p>
+
+  <p style="color:#666;">Une petite phrase suffit, pas besoin de faire un chapitre.</p>
+
+  <p>Merci beaucoup !</p>
+
+  <p style="margin-top:24px;">
+    Cordialement<br>
+    <strong>Yvon Huynh</strong><br>
+    <a href="tel:+33679374873">+33 6 79 37 48 73</a>
+  </p>
+
+  <p style="color:#999; font-size:11px; margin-top:32px; border-top:1px solid #eee; padding-top:12px;">
+    Envoyé à {{ recipient_email }} — {{ now.strftime('%d/%m/%Y') }}
+  </p>
+
+</body>
+</html>

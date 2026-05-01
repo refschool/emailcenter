@@ -17,8 +17,14 @@ class Config:
     # Templates
     templates_dir: str = os.getenv('TEMPLATES_DIR', 'templates')
     
+    # Attachments
+    attachments_dir: str = os.getenv('ATTACHMENTS_DIR', 'attachments')
+
     # Limites Gmail (500/jour gratuit, 2000/jour Workspace)
     rate_limit_per_day: int = int(os.getenv('RATE_LIMIT_DAY', 500))
     rate_limit_per_second: float = float(os.getenv('RATE_LIMIT_SEC', 0.5))
+
+    # Sync interval in hours (auto-sync on page load if exceeded)
+    gmail_sync_interval_hours: int = int(os.getenv('GMAIL_SYNC_INTERVAL_HOURS', 6))
 
 config = Config()

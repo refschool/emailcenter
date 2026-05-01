@@ -16,9 +16,11 @@ venv/
 # Database
 emailcenter.db
 
-# Attachments (user uploads)
+# Attachments (user uploads — single-use, not committed)
 attachments/*
 !attachments/.gitkeep
+
+# assets/ (default template attachments) IS committed — do not ignore
 
 # IDE
 .vscode/

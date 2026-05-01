@@ -1,0 +1,45 @@
+{% set subject = "Onboarding DWWM" %}
+<!DOCTYPE html>
+<html lang="fr">
+<body style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+
+  <p>Bonjour {{ prenom }},</p>
+
+  <p>
+    Voici vos données de connexion pour le parcours <strong>{{ cours }}</strong> :<br>
+    <a href="https://formapedia.com/wp-login.php">https://formapedia.com/wp-login.php</a>
+  </p>
+
+  <table style="border:1px solid #e0e0e0; border-radius:6px; padding:16px 20px; margin:16px 0; background:#f9f9f9;">
+    <tr>
+      <td style="padding:4px 12px 4px 0; color:#666;">Identifiant</td>
+      <td style="padding:4px 0;"><strong>{{ identifiant }}</strong></td>
+    </tr>
+    <tr>
+      <td style="padding:4px 12px 4px 0; color:#666;">Mot de passe</td>
+      <td style="padding:4px 0;"><strong>{{ mot_de_passe }}</strong></td>
+    </tr>
+  </table>
+
+  <p>Une fois connecté, scrollez en bas de la page et cliquez sur le lien vers votre cours.</p>
+
+  <p>
+    Pour les visio, utilisons le logiciel Zoom que vous pouvez télécharger ici :
+    <a href="https://zoom.us">zoom.us</a><br>
+    Un peu avant le début de la visio je vous enverrai un lien pour la réunion.
+  </p>
+
+  <p>À bientôt !</p>
+
+  <p style="margin-top:24px;">
+    Cordialement<br>
+    <strong>Yvon Huynh</strong><br>
+    <a href="tel:+33679374873">+33 6 79 37 48 73</a>
+  </p>
+
+  <p style="color:#999; font-size:11px; margin-top:32px; border-top:1px solid #eee; padding-top:12px;">
+    Envoyé à {{ recipient_email }} — {{ now.strftime('%d/%m/%Y') }}
+  </p>
+
+</body>
+</html>

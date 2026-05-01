@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EmailCenter</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<header>
+  <span class="brand">EmailCenter</span>
+  <div class="header-right">
+    <span id="auth-badge" class="badge">...</span>
+    <a href="/auth" id="auth-link" class="btn btn-sm btn-outline-white" style="display:none">Connect Gmail</a>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="compose">Compose</button>
+  <button class="tab-btn" data-tab="mail">Mail</button>
+</nav>
+
+<!-- ── COMPOSE ───────────────────────────────────────────────────────────── -->
+<div id="tab-compose" class="tab-panel active">
+  <div class="compose-layout">
+
+    <div class="compose-form">
+
+      <div class="field-group">
+        <label>Template</label>
+        <select id="template-select">
+          <option value="">— select a template —</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label>To</label>
+        <input type="email" id="to-address" placeholder="recipient@example.com">
+      </div>
+
+      <div class="field-group">
+        <label>CC <span class="hint">comma-separated</span></label>
+        <input type="text" id="cc-addresses" placeholder="a@example.com, b@example.com">
+      </div>
+
+      <div class="field-group">
+        <label>Sujet</label>
+        <input type="text" id="email-subject" placeholder="Objet de l'email">
+      </div>
+
+      <div class="field-group">
+        <label>Template data <span class="hint">JSON passed to Jinja2</span></label>
+        <textarea id="template-data" rows="9" spellcheck="false" placeholder="{}"></textarea>
+      </div>
+
+      <div class="field-group">
+        <label>Business metadata <span class="hint">JSON — your custom fields</span></label>
+        <textarea id="business-metadata" rows="4" spellcheck="false" placeholder='{"campaign": "", "ref": ""}'></textarea>
+      </div>
+
+      <div class="field-group">
+        <label>Pièces jointes</label>
+        <div class="attachment-zone">
+          <input type="file" id="file-input" multiple hidden>
+          <button class="btn btn-outline" id="btn-add-file">+ Ajouter un fichier</button>
+          <ul id="attachment-list"></ul>
+        </div>
+      </div>
+
+      <div class="compose-actions">
+        <button class="btn" id="btn-draft">Save as Draft</button>
+        <button class="btn btn-primary" id="btn-send">Send</button>
+      </div>
+
+      <div id="compose-result"></div>
+
+    </div><!-- /compose-form -->
+
+    <div class="compose-preview">
+      <div class="preview-header">
+        <span>Preview</span>
+        <button class="btn btn-sm btn-outline" id="btn-preview">Refresh</button>
+      </div>
+      <div id="preview-subject" class="preview-subject"></div>
+      <iframe id="preview-frame" sandbox="allow-same-origin"></iframe>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── MAIL ──────────────────────────────────────────────────────────────── -->
+<div id="tab-mail" class="tab-panel">
+  <div class="mail-layout">
+
+    <div class="mail-subtabs">
+      <button class="subtab-btn active" data-mailbox="INBOX">Inbox</button>
+      <button class="subtab-btn" data-mailbox="SENT">Sent</button>
+      <button class="subtab-btn" data-mailbox="DRAFT">Drafts</button>
+    </div>
+
+    <div class="mail-toolbar">
+      <input type="date" id="filter-date-from" title="From date">
+      <span class="toolbar-sep">→</span>
+      <input type="date" id="filter-date-to" title="To date">
+      <input type="text" id="filter-recipient" placeholder="Recipient / sender">
+      <input type="text" id="filter-label" placeholder="Gmail label">
+      <button class="btn btn-sm btn-outline" id="btn-filter">Filter</button>
+      <div class="toolbar-spacer"></div>
+      <span id="sync-status" class="hint"></span>
+      <button class="btn btn-sm btn-primary" id="btn-sync">Sync Gmail</button>
+    </div>
+
+    <div id="mail-table-wrap">
+      <table class="mail-table">
+        <thead>
+          <tr>
+            <th style="width:220px">From / To</th>
+            <th>Subject</th>
+            <th style="width:140px">Date</th>
+            <th>Preview</th>
+          </tr>
+        </thead>
+        <tbody id="mail-tbody"></tbody>
+      </table>
+      <div id="mail-empty" class="empty-state" style="display:none">
+        No messages. Click <strong>Sync Gmail</strong> to load.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,12 +1,22 @@
 {
   "template_id": "welcome",
   "to": "yvon.huynh@gmail.com",
+  "subject": "Bienvenue, {{ first_name }} !",
+  "attachments": [
+    {
+      "path": "attachments/CGU.pdf",
+      "filename": "CGU.pdf"
+    },
+    {
+      "path": "attachments/Livret Accueil.pdf",
+      "filename": "Livret Accueil.pdf"
+    },
+    {
+      "path": "attachments/Règlement-intérieur.pdf",
+      "filename": "Règlement-intérieur.pdf"
+    }
+  ],
   "data": {
-    "first_name": "Yvon",
-    "plan": "Pro",
-    "trial_days": 14,
-    "cta_url": "https://formapedia.com",
-    "cta_label": "Accéder à mon compte",
-    "recipient_email": "yvon.huynh@gmail.com"
+    "first_name": "Yvon"
   }
 }
