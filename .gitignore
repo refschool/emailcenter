@@ -1,3 +1,6 @@
+# Session artifacts
+REPORT.md
+
 # Secrets
 .env
 credentials.json
