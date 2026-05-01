@@ -1,0 +1,12 @@
+{
+  "template_id": "welcome",
+  "to": "yvon.huynh@gmail.com",
+  "data": {
+    "first_name": "Yvon",
+    "plan": "Pro",
+    "trial_days": 14,
+    "cta_url": "https://formapedia.com",
+    "cta_label": "Accéder à mon compte",
+    "recipient_email": "yvon.huynh@gmail.com"
+  }
+}

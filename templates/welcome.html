@@ -1,0 +1,21 @@
+{% set subject = "Bienvenue, " + first_name + " !" %}
+<!DOCTYPE html>
+<html>
+<body style="font-family: sans-serif; color: #333;">
+    <h1>Bonjour {{ first_name }}</h1>
+    <p>Votre compte <strong>{{ plan }}</strong> est activé.</p>
+
+    {% if trial_days %}
+    <p>Vous avez <strong>{{ trial_days }} jours</strong> d'essai gratuit.</p>
+    {% endif %}
+
+    <a href="{{ cta_url }}" style="background:#4F46E5;color:#fff;padding:10px 20px;
+     border-radius:6px;text-decoration:none;">
+        {{ cta_label | default("Accéder à mon compte") }}
+    </a>
+
+    <p style="color:#999;font-size:12px;">
+        Envoyé à {{ recipient_email }} — {{ now.strftime('%d/%m/%Y') }}
+    </p>
+</body>
+</html>
