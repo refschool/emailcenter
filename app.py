@@ -201,16 +201,25 @@ def api_compose_send():
             'metadata': meta_raw,
         })
 
+    payload_json = json.dumps({
+        'template_id': template_id,
+        'to':          to_address,
+        'cc':          cc_list,
+        'subject':     subject_override,
+        'attachments': default_atts,
+        'data':        template_data,
+    })
+
     if is_draft:
         conn = get_conn()
         with conn:
             cur = conn.execute("""
                 INSERT INTO composed_emails
                     (template_id, to_address, cc_addresses, subject,
-                     template_data, business_metadata, is_draft, status)
-                VALUES (?, ?, ?, ?, ?, ?, 1, 'pending')
+                     template_data, business_metadata, is_draft, status, payload)
+                VALUES (?, ?, ?, ?, ?, ?, 1, 'pending', ?)
             """, (template_id, to_address, cc_raw, subject,
-                  json.dumps(template_data), business_meta))
+                  json.dumps(template_data), business_meta, payload_json))
             eid = cur.lastrowid
             _insert_attachments(conn, eid, att_rows)
         conn.close()
@@ -233,10 +242,10 @@ def api_compose_send():
                 INSERT INTO composed_emails
                     (template_id, to_address, cc_addresses, subject,
                      template_data, business_metadata, is_draft,
-                     status, sent_at, gmail_message_id)
-                VALUES (?, ?, ?, ?, ?, ?, 0, 'sent', ?, ?)
+                     status, sent_at, gmail_message_id, payload)
+                VALUES (?, ?, ?, ?, ?, ?, 0, 'sent', ?, ?, ?)
             """, (template_id, to_address, cc_raw, subject,
-                  json.dumps(template_data), business_meta, sent_at, gmail_id))
+                  json.dumps(template_data), business_meta, sent_at, gmail_id, payload_json))
             eid = cur.lastrowid
             _insert_attachments(conn, eid, att_rows)
         conn.close()
@@ -248,10 +257,10 @@ def api_compose_send():
             conn.execute("""
                 INSERT INTO composed_emails
                     (template_id, to_address, cc_addresses, subject,
-                     template_data, business_metadata, is_draft, status, error_message)
-                VALUES (?, ?, ?, ?, ?, ?, 0, 'failed', ?)
+                     template_data, business_metadata, is_draft, status, error_message, payload)
+                VALUES (?, ?, ?, ?, ?, ?, 0, 'failed', ?, ?)
             """, (template_id, to_address, cc_raw, subject,
-                  json.dumps(template_data), business_meta, str(e)))
+                  json.dumps(template_data), business_meta, str(e), payload_json))
         conn.close()
         return jsonify({'error': str(e)}), 500
 
