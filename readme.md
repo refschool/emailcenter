@@ -48,3 +48,11 @@ On first run an OAuth browser window will open. The token is saved to `token.pic
 | notation_google  | Stub    |
 
 Add a `{% set subject = "..." %}` at the top of each template — it is extracted automatically as the email subject.
+
+
+Design plugin
+/plugin install frontend-design@claude-plugins-official
+
+
+run the program
+python main.py payload.json

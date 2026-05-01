@@ -10,6 +10,13 @@ __pycache__/
 .venv/
 venv/
 
+# Database
+emailcenter.db
+
+# Attachments (user uploads)
+attachments/*
+!attachments/.gitkeep
+
 # IDE
 .vscode/
 .idea/
