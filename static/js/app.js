@@ -280,7 +280,8 @@ async function composeSend(isDraft) {
       false
     );
     if (!isDraft) {
-      document.getElementById('payload-raw').value      = '';
+      document.getElementById('template-select').value   = '';
+      document.getElementById('payload-raw').value       = '';
       document.getElementById('business-metadata').value = '';
       document.getElementById('preview-to').textContent  = '';
       state.attachments        = [];

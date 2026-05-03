@@ -109,7 +109,6 @@ def api_payload(template_id):
     candidates = sorted(
         payload_watcher.PAYLOADS_DIR.glob(f'{template_id}_*.json'),
         key=lambda p: p.stat().st_mtime,
-        reverse=True,
     )
     path = candidates[0] if candidates else payload_watcher.PAYLOADS_DIR / f'{template_id}.json'
     if not path.exists():
