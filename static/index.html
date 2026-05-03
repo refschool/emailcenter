@@ -20,6 +20,7 @@
   <button class="tab-btn active" data-tab="compose">Compose</button>
   <button class="tab-btn" data-tab="mail">Mail</button>
   <button class="tab-btn" data-tab="history">Historique</button>
+  <button class="tab-btn" data-tab="contacts">Contacts</button>
 </nav>
 
 <!-- ── COMPOSE ───────────────────────────────────────────────────────────── -->
@@ -124,6 +125,7 @@
         </div>
         <div class="tray-meta" id="tray-meta"></div>
         <div class="tray-attachments" id="tray-attachments"></div>
+        <div class="tray-classify" id="tray-classify"></div>
         <div class="tray-snippet" id="tray-snippet"></div>
       </aside>
 
@@ -161,6 +163,98 @@
         <tbody id="hist-tbody"></tbody>
       </table>
       <div id="hist-empty" class="empty-state" style="display:none">Aucun email composé.</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── CONTACTS ──────────────────────────────────────────────────────────── -->
+<div id="tab-contacts" class="tab-panel">
+  <div class="contacts-page">
+
+    <div class="contacts-subtabs">
+      <button class="subtab-btn active" data-csub="csub-contacts">Contacts</button>
+      <button class="subtab-btn" data-csub="csub-rules">Règles de routage</button>
+    </div>
+
+    <!-- Contacts list + detail -->
+    <div id="csub-contacts" class="csub-panel active">
+      <div class="contacts-layout">
+
+        <div class="contacts-list-col">
+          <div class="contacts-list-toolbar">
+            <input type="text" id="contact-search" placeholder="Rechercher…">
+            <button class="btn btn-sm btn-primary" id="btn-new-contact">+ Nouveau</button>
+          </div>
+          <div id="contacts-list-items" class="contacts-list-items"></div>
+        </div>
+
+        <div class="contacts-detail-col">
+          <div class="empty-state" id="contacts-detail-placeholder">
+            Sélectionnez un contact ou créez-en un nouveau.
+          </div>
+          <div id="contacts-detail-form" style="display:none"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Routing rules -->
+    <div id="csub-rules" class="csub-panel">
+      <div class="rules-layout">
+
+        <div class="rules-toolbar">
+          <span class="hint" style="flex:1">Deux conditions = ET logique. Laisser vide = s'applique à tous.</span>
+          <button class="btn btn-sm btn-primary" id="btn-add-rule">+ Règle</button>
+        </div>
+
+        <div id="rules-table-wrap">
+          <table class="mail-table">
+            <thead>
+              <tr>
+                <th style="width:70px">Priorité</th>
+                <th style="width:180px">Contient dans le nom</th>
+                <th style="width:140px">Extensions</th>
+                <th>Sous-dossier destination</th>
+                <th style="width:80px"></th>
+              </tr>
+            </thead>
+            <tbody id="rules-tbody"></tbody>
+          </table>
+          <div id="rules-empty" class="empty-state" style="display:none">
+            Aucune règle. Ajoutez-en une pour router automatiquement les pièces jointes.
+          </div>
+        </div>
+
+        <div id="rule-form-panel" style="display:none">
+          <div class="rule-form">
+            <div class="rule-form-title" id="rule-form-title">Nouvelle règle</div>
+            <div class="rule-form-fields">
+              <div class="field-group">
+                <label>Contient <span class="hint">dans le nom de fichier</span></label>
+                <input type="text" id="rule-name-contains" placeholder="facture, contrat, CV…">
+              </div>
+              <div class="field-group">
+                <label>Extensions <span class="hint">séparées par virgule</span></label>
+                <input type="text" id="rule-extensions" placeholder=".pdf, .docx, .xlsx">
+              </div>
+              <div class="field-group">
+                <label>Sous-dossier <span class="hint">relatif au dossier contact</span></label>
+                <input type="text" id="rule-subfolder" placeholder="documents/contrats">
+              </div>
+              <div class="field-group">
+                <label>Priorité <span class="hint">plus grand = plus prioritaire</span></label>
+                <input type="number" id="rule-priority" value="0">
+              </div>
+            </div>
+            <div class="rule-form-actions">
+              <button class="btn btn-primary btn-sm" id="btn-save-rule">Enregistrer</button>
+              <button class="btn btn-sm" id="btn-cancel-rule">Annuler</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
 
   </div>

@@ -656,6 +656,349 @@ th.sort-active::after {
   white-space: pre;
 }
 
+/* ── Contacts page ───────────────────────────────────────────────────────── */
+
+.contacts-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.contacts-subtabs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 10px 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.csub-panel           { display: none; flex: 1; overflow: hidden; }
+.csub-panel.active    { display: flex; flex-direction: column; }
+
+/* Two-panel layout */
+.contacts-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+.contacts-list-col {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.contacts-list-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.contacts-list-toolbar input[type="text"] {
+  flex: 1;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  background: var(--bg);
+}
+
+.contacts-list-items { flex: 1; overflow-y: auto; }
+
+.contact-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.contact-list-item:hover  { background: var(--bg); }
+.contact-list-item.active { background: #eef2ff; }
+
+.contact-list-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-list-meta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+.contacts-detail-col {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--bg);
+}
+
+/* Contact detail form */
+.contact-detail { display: flex; flex-direction: column; gap: 16px; max-width: 500px; }
+
+.contact-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.contact-detail-title { font-size: 15px; font-weight: 700; }
+
+.cd-emails-section { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+
+.cd-emails-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cd-email-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+
+.cd-email-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.cd-email-addr  { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-email-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+.cd-add-email-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.cd-add-email-form input {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  background: var(--surface);
+}
+
+.cd-add-email-form input[type="email"] { flex: 1; min-width: 160px; }
+.cd-add-email-form input[type="text"]  { width: 90px; }
+
+/* Routing rules layout */
+.rules-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.rules-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+#rules-table-wrap { flex: 1; overflow-y: auto; }
+
+.rule-form {
+  flex-shrink: 0;
+  padding: 16px 20px;
+  background: var(--surface);
+  border-top: 2px solid var(--primary);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rule-form-title { font-size: 13px; font-weight: 600; }
+
+.rule-form-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.rule-form-actions { display: flex; gap: 8px; }
+
+/* ── Folder picker ───────────────────────────────────────────────────────── */
+
+.folder-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.folder-input-row input[type="text"] { flex: 1; }
+
+.folder-picker {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.folder-picker-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.fp-current {
+  flex: 1;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-list {
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.fp-item {
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-item::before { content: '📁 '; font-size: 12px; }
+.fp-item:last-child { border-bottom: none; }
+.fp-item:hover { background: var(--bg); }
+
+.fp-message {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.fp-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+/* ── Tray classify ────────────────────────────────────────────────────────── */
+
+.tray-classify { flex-shrink: 0; }
+.tray-classify:empty { display: none; }
+
+.classify-btn-row { padding: 10px 14px; }
+
+.classify-no-contact {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  border-bottom: 1px solid var(--border);
+}
+
+.classify-no-contact a { color: var(--primary); }
+
+.classify-contact-banner {
+  padding: 8px 14px;
+  background: #eef2ff;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.classify-file-list {
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.classify-file-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.classify-file-item input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; }
+
+.classify-file-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.classify-filename {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.classify-dest-input {
+  width: 100%;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.classify-dest-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--surface);
+}
+
+.classify-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.classify-result {
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.classify-result-item { display: flex; align-items: baseline; gap: 6px; }
+.classify-ok  { color: var(--success); }
+.classify-err { color: var(--error); }
+
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
 .btn {

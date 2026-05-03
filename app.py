@@ -433,5 +433,308 @@ def api_gmail_messages():
     return jsonify(rows)
 
 
+# ── Filesystem browser ───────────────────────────────────────────────────────
+
+def _is_accessible_dir(p: Path) -> bool:
+    try:
+        return p.is_dir()
+    except (PermissionError, OSError):
+        return False
+
+
+@app.route('/api/browse')
+def api_browse():
+    import platform
+    raw = request.args.get('path', '').strip()
+
+    if not raw:
+        if platform.system() == 'Windows':
+            import string
+            entries = [
+                {'name': f'{d}:', 'path': f'{d}:\\'}
+                for d in string.ascii_uppercase
+                if Path(f'{d}:\\').exists()
+            ]
+            return jsonify({'path': '', 'parent': None, 'entries': entries})
+        raw = '/'
+
+    p = Path(raw)
+    if not p.exists() or not p.is_dir():
+        return jsonify({'error': 'Not found'}), 404
+
+    try:
+        entries = sorted(
+            [{'name': c.name, 'path': str(c)} for c in p.iterdir() if _is_accessible_dir(c)],
+            key=lambda e: e['name'].lower(),
+        )
+        if p.parent == p:
+            parent = '' if platform.system() == 'Windows' else None
+        else:
+            parent = str(p.parent)
+
+        return jsonify({'path': str(p), 'parent': parent, 'entries': entries})
+    except PermissionError:
+        return jsonify({'error': 'Permission denied'}), 403
+
+
+# ── Contacts ──────────────────────────────────────────────────────────────────
+
+import re as _re
+
+def _extract_email(addr: str) -> str:
+    m = _re.search(r'<([^>]+)>', addr or '')
+    return m.group(1).strip().lower() if m else (addr or '').strip().lower()
+
+
+@app.route('/api/contacts')
+def api_contacts():
+    conn = get_conn()
+    contacts = [dict(r) for r in conn.execute(
+        'SELECT * FROM contacts ORDER BY name'
+    ).fetchall()]
+    for c in contacts:
+        c['emails'] = [dict(r) for r in conn.execute(
+            'SELECT * FROM contact_emails WHERE contact_id = ?', (c['id'],)
+        ).fetchall()]
+    conn.close()
+    return jsonify(contacts)
+
+
+@app.route('/api/contacts', methods=['POST'])
+def api_create_contact():
+    body = request.get_json()
+    if not body.get('name') or not body.get('folder_path'):
+        return jsonify({'error': 'name and folder_path required'}), 400
+    conn = get_conn()
+    with conn:
+        cur = conn.execute(
+            'INSERT INTO contacts (name, folder_path, type) VALUES (?, ?, ?)',
+            (body['name'], body['folder_path'], body.get('type', 'prospect'))
+        )
+        cid = cur.lastrowid
+    conn.close()
+    return jsonify({'id': cid}), 201
+
+
+@app.route('/api/contacts/<int:cid>', methods=['PUT'])
+def api_update_contact(cid):
+    body = request.get_json()
+    conn = get_conn()
+    with conn:
+        conn.execute(
+            'UPDATE contacts SET name=?, folder_path=?, type=? WHERE id=?',
+            (body['name'], body['folder_path'], body.get('type', 'prospect'), cid)
+        )
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/contacts/<int:cid>', methods=['DELETE'])
+def api_delete_contact(cid):
+    conn = get_conn()
+    with conn:
+        conn.execute('DELETE FROM contacts WHERE id=?', (cid,))
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/contacts/<int:cid>/emails', methods=['POST'])
+def api_add_contact_email(cid):
+    body = request.get_json()
+    if not body.get('email'):
+        return jsonify({'error': 'email required'}), 400
+    conn = get_conn()
+    try:
+        with conn:
+            cur = conn.execute(
+                'INSERT INTO contact_emails (contact_id, email, label) VALUES (?, ?, ?)',
+                (cid, body['email'].strip().lower(), body.get('label', ''))
+            )
+            eid = cur.lastrowid
+        conn.close()
+        return jsonify({'id': eid}), 201
+    except Exception as e:
+        conn.close()
+        return jsonify({'error': str(e)}), 409
+
+
+@app.route('/api/contact-emails/<int:eid>', methods=['DELETE'])
+def api_delete_contact_email(eid):
+    conn = get_conn()
+    with conn:
+        conn.execute('DELETE FROM contact_emails WHERE id=?', (eid,))
+    conn.close()
+    return jsonify({'ok': True})
+
+
+# ── Routing rules ─────────────────────────────────────────────────────────────
+
+@app.route('/api/routing-rules')
+def api_routing_rules():
+    conn = get_conn()
+    rules = [dict(r) for r in conn.execute(
+        'SELECT * FROM routing_rules ORDER BY priority DESC, id'
+    ).fetchall()]
+    conn.close()
+    return jsonify(rules)
+
+
+@app.route('/api/routing-rules', methods=['POST'])
+def api_create_routing_rule():
+    body = request.get_json()
+    if not body.get('subfolder'):
+        return jsonify({'error': 'subfolder required'}), 400
+    conn = get_conn()
+    with conn:
+        cur = conn.execute(
+            'INSERT INTO routing_rules (name_contains, extensions, subfolder, priority) VALUES (?, ?, ?, ?)',
+            (body.get('name_contains', ''), body.get('extensions', ''),
+             body['subfolder'], int(body.get('priority', 0)))
+        )
+        rid = cur.lastrowid
+    conn.close()
+    return jsonify({'id': rid}), 201
+
+
+@app.route('/api/routing-rules/<int:rid>', methods=['PUT'])
+def api_update_routing_rule(rid):
+    body = request.get_json()
+    conn = get_conn()
+    with conn:
+        conn.execute(
+            'UPDATE routing_rules SET name_contains=?, extensions=?, subfolder=?, priority=? WHERE id=?',
+            (body.get('name_contains', ''), body.get('extensions', ''),
+             body['subfolder'], int(body.get('priority', 0)), rid)
+        )
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/routing-rules/<int:rid>', methods=['DELETE'])
+def api_delete_routing_rule(rid):
+    conn = get_conn()
+    with conn:
+        conn.execute('DELETE FROM routing_rules WHERE id=?', (rid,))
+    conn.close()
+    return jsonify({'ok': True})
+
+
+# ── Classify & download ───────────────────────────────────────────────────────
+
+def _match_routing_rule(rules: list, filename: str) -> dict | None:
+    ext        = Path(filename).suffix.lower()
+    name_lower = filename.lower()
+    for rule in rules:  # already sorted priority DESC
+        name_ok = not rule['name_contains'] or rule['name_contains'].lower() in name_lower
+        ext_ok  = True
+        if rule['extensions']:
+            allowed = [e.strip().lower() for e in rule['extensions'].split(',')]
+            ext_ok  = ext in allowed
+        if name_ok and ext_ok:
+            return rule
+    return None
+
+
+@app.route('/api/gmail/message/<gmail_message_id>/classify', methods=['POST'])
+def api_classify(gmail_message_id):
+    if not is_authenticated():
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    conn = get_conn()
+    row  = conn.execute(
+        'SELECT from_address FROM gmail_messages WHERE gmail_message_id = ?',
+        (gmail_message_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'Message not found — sync first'}), 404
+
+    sender = _extract_email(row['from_address'] or '')
+
+    conn = get_conn()
+    contact_row = conn.execute('''
+        SELECT c.id, c.name, c.folder_path, c.type
+        FROM contacts c
+        JOIN contact_emails ce ON ce.contact_id = c.id
+        WHERE ce.email = ?
+    ''', (sender,)).fetchone()
+
+    if not contact_row:
+        conn.close()
+        return jsonify({'contact': None, 'sender': row['from_address'], 'suggestions': []})
+
+    contact = dict(contact_row)
+    rules   = [dict(r) for r in conn.execute(
+        'SELECT * FROM routing_rules ORDER BY priority DESC, id'
+    ).fetchall()]
+    conn.close()
+
+    from googleapiclient.discovery import build
+    service = build('gmail', 'v1', credentials=get_credentials())
+    msg     = service.users().messages().get(
+        userId='me', id=gmail_message_id, format='full'
+    ).execute()
+
+    raw_atts: list = []
+
+    def _walk(parts):
+        for part in parts or []:
+            if part.get('filename'):
+                raw_atts.append({
+                    'attachment_id': part.get('body', {}).get('attachmentId', ''),
+                    'name':          part['filename'],
+                    'mime_type':     part.get('mimeType', ''),
+                    'size':          part.get('body', {}).get('size', 0),
+                })
+            _walk(part.get('parts', []))
+
+    _walk(msg.get('payload', {}).get('parts', []))
+
+    suggestions = []
+    for att in raw_atts:
+        rule      = _match_routing_rule(rules, att['name'])
+        subfolder = rule['subfolder'] if rule else ''
+        dest_dir  = Path(contact['folder_path'])
+        if subfolder:
+            dest_dir = dest_dir / subfolder
+        suggestions.append({
+            **att,
+            'dest_path':    str(dest_dir / att['name']),
+            'rule_matched': subfolder or None,
+        })
+
+    return jsonify({'contact': contact, 'sender': row['from_address'], 'suggestions': suggestions})
+
+
+@app.route('/api/gmail/message/<gmail_message_id>/download', methods=['POST'])
+def api_gmail_download(gmail_message_id):
+    if not is_authenticated():
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    items = request.get_json()
+    if not items:
+        return jsonify({'error': 'No files specified'}), 400
+
+    from googleapiclient.discovery import build
+    import base64 as _b64
+    service = build('gmail', 'v1', credentials=get_credentials())
+
+    results = []
+    for item in items:
+        try:
+            att_data = service.users().messages().attachments().get(
+                userId='me', messageId=gmail_message_id, id=item['attachment_id']
+            ).execute()
+            data = _b64.urlsafe_b64decode(att_data['data'])
+            dest = Path(item['dest_path'])
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+            results.append({'name': item['name'], 'path': str(dest), 'ok': True})
+        except Exception as e:
+            results.append({'name': item['name'], 'error': str(e), 'ok': False})
+
+    return jsonify({'results': results})
+
+
 if __name__ == '__main__':
     app.run(debug=True)

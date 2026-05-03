@@ -381,8 +381,10 @@ async function openMailTray(msg) {
   document.getElementById('tray-snippet').innerHTML =
     linkify(decodeEntities(msg.snippet || ''));
 
-  const attsEl = document.getElementById('tray-attachments');
-  attsEl.innerHTML = '';
+  const attsEl     = document.getElementById('tray-attachments');
+  const classifyEl = document.getElementById('tray-classify');
+  attsEl.innerHTML     = '';
+  classifyEl.innerHTML = '';
 
   document.getElementById('mail-tray').classList.remove('mail-tray--closed');
 
@@ -396,6 +398,11 @@ async function openMailTray(msg) {
           <ul class="tray-atts-list">
             ${atts.map(a => `<li><span>${esc(a.name)}</span><span class="hint">${fmtBytes(a.size)}</span></li>`).join('')}
           </ul>`;
+        classifyEl.innerHTML = `<div class="classify-btn-row">
+          <button class="btn btn-sm btn-outline" id="btn-classer">Classer les pièces jointes</button>
+        </div>`;
+        document.getElementById('btn-classer')
+          .addEventListener('click', () => classifyAttachments(msg));
       }
     } catch { /* no-op — non-blocking */ }
   }
@@ -563,6 +570,451 @@ function tryParse(str) {
   try { return str ? JSON.parse(str) : null; } catch { return null; }
 }
 
+// ── Folder picker ─────────────────────────────────────────────────────────────
+
+function _folderFieldHTML(value = '') {
+  return `
+    <div class="folder-input-row">
+      <input type="text" id="cd-folder" value="${esc(value)}" placeholder="D:\\Formapedia\\clients\\dupont">
+      <button class="btn btn-sm btn-outline" id="btn-browse-folder" type="button">📁 Browse</button>
+    </div>
+    <div class="folder-picker" id="folder-picker" style="display:none">
+      <div class="folder-picker-nav">
+        <button class="btn btn-sm" id="fp-up" type="button" disabled>↑ Haut</button>
+        <span class="fp-current" id="fp-current"></span>
+      </div>
+      <ul class="fp-list" id="fp-list"></ul>
+      <div class="fp-actions">
+        <button class="btn btn-sm btn-primary" id="fp-select" type="button">Sélectionner ce dossier</button>
+        <button class="btn btn-sm" id="fp-close" type="button">Fermer</button>
+      </div>
+    </div>`;
+}
+
+function _wireFolderBrowser() {
+  let _fpData = null;
+
+  async function _browseTo(path) {
+    const url = path ? `/api/browse?path=${encodeURIComponent(path)}` : '/api/browse';
+    const list = document.getElementById('fp-list');
+    list.innerHTML = '<li class="fp-message">Chargement…</li>';
+    try {
+      _fpData = await apiFetch('GET', url);
+      document.getElementById('fp-current').textContent = _fpData.path || 'Lecteurs disponibles';
+
+      if (_fpData.entries.length) {
+        list.innerHTML = _fpData.entries
+          .map(e => `<li class="fp-item" data-path="${esc(e.path)}">${esc(e.name)}</li>`)
+          .join('');
+        list.querySelectorAll('.fp-item').forEach(li =>
+          li.addEventListener('click', () => _browseTo(li.dataset.path))
+        );
+      } else {
+        list.innerHTML = '<li class="fp-message">Aucun sous-dossier</li>';
+      }
+
+      const upBtn = document.getElementById('fp-up');
+      upBtn.disabled = _fpData.parent === null;
+      upBtn.onclick  = () => _browseTo(_fpData.parent ?? '');
+
+      document.getElementById('fp-select').onclick = () => {
+        if (_fpData.path) document.getElementById('cd-folder').value = _fpData.path;
+        document.getElementById('folder-picker').style.display = 'none';
+      };
+    } catch (e) {
+      list.innerHTML = `<li class="fp-message err">${esc(e.message)}</li>`;
+    }
+  }
+
+  document.getElementById('btn-browse-folder').addEventListener('click', () => {
+    const picker = document.getElementById('folder-picker');
+    if (picker.style.display === 'none') {
+      const cur = (document.getElementById('cd-folder').value || '').trim();
+      _browseTo(cur || '');
+      picker.style.display = '';
+    } else {
+      picker.style.display = 'none';
+    }
+  });
+
+  document.getElementById('fp-close').addEventListener('click', () => {
+    document.getElementById('folder-picker').style.display = 'none';
+  });
+}
+
+// ── Contacts ──────────────────────────────────────────────────────────────────
+
+let contactsData   = [];
+let selContactId   = null;
+let editingRuleId  = null;
+
+async function loadContacts() {
+  try {
+    contactsData = await apiFetch('GET', '/api/contacts');
+    renderContactList(contactsData);
+  } catch (e) { console.error('loadContacts', e); }
+}
+
+function renderContactList(list) {
+  const el     = document.getElementById('contacts-list-items');
+  const search = (document.getElementById('contact-search').value || '').toLowerCase();
+  const filt   = list.filter(c =>
+    c.name.toLowerCase().includes(search) ||
+    (c.emails || []).some(e => e.email.toLowerCase().includes(search))
+  );
+
+  el.innerHTML = '';
+  if (!filt.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:30px 20px">Aucun contact.</div>';
+    return;
+  }
+  filt.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'contact-list-item' + (c.id === selContactId ? ' active' : '');
+    div.innerHTML = `
+      <div class="contact-list-name">${esc(c.name)}</div>
+      <span class="contact-list-meta">${c.type === 'client' ? 'Client' : 'Prospect'} · ${(c.emails || []).length} email${(c.emails||[]).length > 1 ? 's' : ''}</span>`;
+    div.addEventListener('click', () => openContactDetail(c));
+    el.appendChild(div);
+  });
+}
+
+function openContactDetail(contact) {
+  selContactId = contact.id;
+  renderContactList(contactsData);
+  document.getElementById('contacts-detail-placeholder').style.display = 'none';
+  const form = document.getElementById('contacts-detail-form');
+  form.style.display = '';
+  form.innerHTML     = _contactDetailHTML(contact);
+  _wireContactDetail(contact);
+}
+
+function _contactDetailHTML(c) {
+  const emailsHtml = (c.emails || []).map(e => `
+    <li class="cd-email-item">
+      <span class="cd-email-addr">${esc(e.email)}</span>
+      ${e.label ? `<span class="cd-email-label">${esc(e.label)}</span>` : ''}
+      <button class="btn btn-sm" data-del-email="${e.id}">✕</button>
+    </li>`).join('');
+
+  return `
+    <div class="contact-detail">
+      <div class="contact-detail-header">
+        <span class="contact-detail-title">${esc(c.name)}</span>
+        <button class="btn btn-sm" id="btn-delete-contact">Supprimer</button>
+      </div>
+      <div class="field-group">
+        <label>Nom</label>
+        <input type="text" id="cd-name" value="${esc(c.name)}">
+      </div>
+      <div class="field-group">
+        <label>Type</label>
+        <select id="cd-type">
+          <option value="prospect"${c.type==='prospect'?' selected':''}>Prospect</option>
+          <option value="client"${c.type==='client'?' selected':''}>Client</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Dossier <span class="hint">chemin absolu</span></label>
+        ${_folderFieldHTML(c.folder_path)}
+      </div>
+      <button class="btn btn-primary btn-sm" id="btn-save-contact-detail">Enregistrer</button>
+      <div class="cd-emails-section">
+        <div class="cd-emails-header">
+          <span class="pv-label">Adresses email</span>
+          <button class="btn btn-sm btn-outline" id="btn-toggle-add-email">+ Email</button>
+        </div>
+        <ul class="cd-email-list" id="cd-email-list">${emailsHtml || '<li class="hint" style="padding:6px 4px">Aucune adresse.</li>'}</ul>
+        <div class="cd-add-email-form" id="cd-add-email-form" style="display:none">
+          <input type="email" id="cd-new-email" placeholder="email@domaine.com">
+          <input type="text"  id="cd-new-label" placeholder="pro / perso">
+          <button class="btn btn-sm btn-primary" id="btn-confirm-add-email">Ajouter</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function _wireContactDetail(contact) {
+  _wireFolderBrowser();
+  document.getElementById('btn-save-contact-detail').addEventListener('click', async () => {
+    const body = {
+      name:        document.getElementById('cd-name').value.trim(),
+      folder_path: document.getElementById('cd-folder').value.trim(),
+      type:        document.getElementById('cd-type').value,
+    };
+    await apiFetch('PUT', `/api/contacts/${contact.id}`, body);
+    Object.assign(contact, body);
+    await loadContacts();
+    openContactDetail(contact);
+  });
+
+  document.getElementById('btn-delete-contact').addEventListener('click', async () => {
+    if (!confirm(`Supprimer ${contact.name} ?`)) return;
+    await apiFetch('DELETE', `/api/contacts/${contact.id}`);
+    selContactId = null;
+    document.getElementById('contacts-detail-placeholder').style.display = '';
+    document.getElementById('contacts-detail-form').style.display = 'none';
+    await loadContacts();
+  });
+
+  document.getElementById('btn-toggle-add-email').addEventListener('click', () => {
+    const f = document.getElementById('cd-add-email-form');
+    f.style.display = f.style.display === 'none' ? '' : 'none';
+  });
+
+  document.getElementById('btn-confirm-add-email').addEventListener('click', async () => {
+    const email = document.getElementById('cd-new-email').value.trim();
+    const label = document.getElementById('cd-new-label').value.trim();
+    if (!email) return;
+    try {
+      await apiFetch('POST', `/api/contacts/${contact.id}/emails`, { email, label });
+      contactsData = await apiFetch('GET', '/api/contacts');
+      const fresh  = contactsData.find(c => c.id === contact.id);
+      if (fresh) openContactDetail(fresh);
+    } catch (e) { alert(e.message); }
+  });
+
+  document.querySelectorAll('[data-del-email]').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      await apiFetch('DELETE', `/api/contact-emails/${btn.dataset.delEmail}`);
+      contact.emails = contact.emails.filter(e => e.id !== +btn.dataset.delEmail);
+      openContactDetail(contact);
+    })
+  );
+}
+
+function openNewContactForm(prefillEmail = '') {
+  selContactId = null;
+  renderContactList(contactsData);
+  document.getElementById('contacts-detail-placeholder').style.display = 'none';
+  const form = document.getElementById('contacts-detail-form');
+  form.style.display = '';
+  form.innerHTML = `
+    <div class="contact-detail">
+      <div class="contact-detail-title">Nouveau contact</div>
+      <div class="field-group">
+        <label>Nom</label>
+        <input type="text" id="cd-name" placeholder="Jean Dupont">
+      </div>
+      <div class="field-group">
+        <label>Type</label>
+        <select id="cd-type">
+          <option value="prospect">Prospect</option>
+          <option value="client">Client</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Dossier <span class="hint">chemin absolu vers le dossier du contact</span></label>
+        ${_folderFieldHTML()}
+      </div>
+      ${prefillEmail ? `<div class="field-group"><label>Email initial</label><input type="email" id="cd-prefill-email" value="${esc(prefillEmail)}"></div>` : ''}
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" id="btn-create-contact">Créer</button>
+        <button class="btn btn-sm" id="btn-cancel-new">Annuler</button>
+      </div>
+    </div>`;
+
+  _wireFolderBrowser();
+  document.getElementById('btn-create-contact').addEventListener('click', async () => {
+    const body = {
+      name:        document.getElementById('cd-name').value.trim(),
+      folder_path: document.getElementById('cd-folder').value.trim(),
+      type:        document.getElementById('cd-type').value,
+    };
+    if (!body.name || !body.folder_path) { alert('Nom et dossier requis.'); return; }
+    const r    = await apiFetch('POST', '/api/contacts', body);
+    const email = prefillEmail || (document.getElementById('cd-prefill-email')?.value || '').trim();
+    if (email) await apiFetch('POST', `/api/contacts/${r.id}/emails`, { email, label: '' });
+    contactsData = await apiFetch('GET', '/api/contacts');
+    const fresh  = contactsData.find(c => c.id === r.id);
+    if (fresh) openContactDetail(fresh);
+  });
+
+  document.getElementById('btn-cancel-new').addEventListener('click', () => {
+    document.getElementById('contacts-detail-placeholder').style.display = '';
+    form.style.display = 'none';
+  });
+}
+
+// ── Routing rules ─────────────────────────────────────────────────────────────
+
+let rulesData = [];
+
+async function loadRules() {
+  try {
+    rulesData = await apiFetch('GET', '/api/routing-rules');
+    renderRules(rulesData);
+  } catch (e) { console.error('loadRules', e); }
+}
+
+function renderRules(rules) {
+  const tbody = document.getElementById('rules-tbody');
+  const empty = document.getElementById('rules-empty');
+  tbody.innerHTML   = '';
+  empty.style.display = rules.length ? 'none' : '';
+
+  rules.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.priority}</td>
+      <td>${esc(r.name_contains || '—')}</td>
+      <td>${esc(r.extensions   || '—')}</td>
+      <td>${esc(r.subfolder)}</td>
+      <td style="display:flex;gap:4px">
+        <button class="btn btn-sm btn-outline" data-edit-rule="${r.id}">Éditer</button>
+        <button class="btn btn-sm" data-del-rule="${r.id}">✕</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('[data-edit-rule]').forEach(btn =>
+    btn.addEventListener('click', () =>
+      openRuleForm(rulesData.find(r => r.id === +btn.dataset.editRule))
+    )
+  );
+  tbody.querySelectorAll('[data-del-rule]').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('Supprimer cette règle ?')) return;
+      await apiFetch('DELETE', `/api/routing-rules/${btn.dataset.delRule}`);
+      await loadRules();
+    })
+  );
+}
+
+function openRuleForm(rule = null) {
+  editingRuleId = rule ? rule.id : null;
+  document.getElementById('rule-form-title').textContent       = rule ? 'Modifier la règle' : 'Nouvelle règle';
+  document.getElementById('rule-name-contains').value          = rule?.name_contains || '';
+  document.getElementById('rule-extensions').value             = rule?.extensions    || '';
+  document.getElementById('rule-subfolder').value              = rule?.subfolder     || '';
+  document.getElementById('rule-priority').value               = rule?.priority      ?? 0;
+  document.getElementById('rule-form-panel').style.display     = '';
+  document.getElementById('rule-subfolder').focus();
+}
+
+// ── Contacts subtab switching ─────────────────────────────────────────────────
+
+function switchContactsSubtab(id) {
+  document.querySelectorAll('.contacts-subtabs .subtab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.csub === id)
+  );
+  document.querySelectorAll('.csub-panel').forEach(p =>
+    p.classList.toggle('active', p.id === id)
+  );
+  if (id === 'csub-contacts') loadContacts();
+  if (id === 'csub-rules')    loadRules();
+}
+
+// ── Classify ──────────────────────────────────────────────────────────────────
+
+let _classifyMsg = null;
+
+async function classifyAttachments(msg) {
+  _classifyMsg = msg;
+  const el = document.getElementById('tray-classify');
+  el.innerHTML = '<div style="padding:10px 14px;font-size:12px;color:var(--text-muted)">Analyse en cours…</div>';
+
+  try {
+    const data = await apiFetch('POST', `/api/gmail/message/${msg.gmail_message_id}/classify`);
+
+    if (!data.contact) {
+      const senderEmail = (data.sender || '').replace(/.*<([^>]+)>.*/, '$1') || data.sender || '';
+      el.innerHTML = `
+        <div class="classify-no-contact">
+          <strong>${esc(data.sender || 'Expéditeur inconnu')}</strong> n'est pas dans vos contacts.<br>
+          <a href="#" id="link-add-sender">Ajouter comme contact</a>
+        </div>`;
+      document.getElementById('link-add-sender').addEventListener('click', e => {
+        e.preventDefault();
+        switchTab('contacts');
+        openNewContactForm(senderEmail);
+      });
+      return;
+    }
+
+    if (!data.suggestions.length) {
+      el.innerHTML = '<div class="classify-no-contact">Aucune pièce jointe trouvée.</div>';
+      return;
+    }
+
+    _renderClassifyForm(el, data.contact, data.suggestions);
+  } catch (e) {
+    el.innerHTML = `<div class="classify-no-contact"><span class="err">${esc(e.message)}</span></div>`;
+  }
+}
+
+function _renderClassifyForm(el, contact, suggestions) {
+  const filesHtml = suggestions.map((s, i) => `
+    <li class="classify-file-item">
+      <input type="checkbox" id="clf-${i}" checked>
+      <div class="classify-file-info">
+        <label for="clf-${i}" class="classify-filename" title="${esc(s.name)}">${esc(s.name)}</label>
+        <input class="classify-dest-input"
+               value="${esc(s.dest_path)}"
+               data-att-id="${esc(s.attachment_id)}"
+               data-name="${esc(s.name)}">
+      </div>
+    </li>`).join('');
+
+  el.innerHTML = `
+    <div class="classify-contact-banner">
+      <strong>${esc(contact.name)}</strong>
+      <span class="hint">${esc(contact.folder_path)}</span>
+    </div>
+    <ul class="classify-file-list">${filesHtml}</ul>
+    <div class="classify-actions">
+      <button class="btn btn-primary btn-sm" id="btn-confirm-classify">Télécharger</button>
+      <button class="btn btn-sm" id="btn-cancel-classify">Annuler</button>
+    </div>
+    <div class="classify-result" id="classify-result"></div>`;
+
+  document.getElementById('btn-cancel-classify').addEventListener('click', () => {
+    el.innerHTML = `<div class="classify-btn-row">
+      <button class="btn btn-sm btn-outline" id="btn-classer-reset">Classer les pièces jointes</button>
+    </div>`;
+    document.getElementById('btn-classer-reset')
+      .addEventListener('click', () => classifyAttachments(_classifyMsg));
+  });
+
+  document.getElementById('btn-confirm-classify')
+    .addEventListener('click', () => _confirmDownload(el, _classifyMsg.gmail_message_id));
+}
+
+async function _confirmDownload(el, gmailMessageId) {
+  const items = [];
+  el.querySelectorAll('.classify-file-item').forEach(li => {
+    if (!li.querySelector('input[type="checkbox"]').checked) return;
+    const inp = li.querySelector('.classify-dest-input');
+    items.push({
+      attachment_id: inp.dataset.attId,
+      name:          inp.dataset.name,
+      dest_path:     inp.value.trim(),
+    });
+  });
+  if (!items.length) return;
+
+  const btn = document.getElementById('btn-confirm-classify');
+  btn.disabled    = true;
+  btn.textContent = 'Téléchargement…';
+
+  try {
+    const res     = await apiFetch('POST', `/api/gmail/message/${gmailMessageId}/download`, items);
+    const resultEl = document.getElementById('classify-result');
+    resultEl.innerHTML = res.results.map(r => `
+      <div class="classify-result-item">
+        <span class="${r.ok ? 'classify-ok' : 'classify-err'}">${r.ok ? '✓' : '✗'} ${esc(r.name)}</span>
+        ${!r.ok ? `<span class="hint">${esc(r.error)}</span>` : ''}
+      </div>`).join('');
+    btn.style.display = 'none';
+    document.getElementById('btn-cancel-classify').textContent = 'Fermer';
+  } catch (e) {
+    document.getElementById('classify-result').innerHTML =
+      `<span class="err">${esc(e.message)}</span>`;
+    btn.disabled    = false;
+    btn.textContent = 'Réessayer';
+  }
+}
+
 // ── Tab switching ─────────────────────────────────────────────────────────────
 
 function switchTab(tab) {
@@ -572,13 +1024,14 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-panel').forEach(p =>
     p.classList.toggle('active', p.id === `tab-${tab}`)
   );
-  if (tab === 'mail')    loadMessages();
-  if (tab === 'history') loadHistory();
+  if (tab === 'mail')     loadMessages();
+  if (tab === 'history')  loadHistory();
+  if (tab === 'contacts') loadContacts();
 }
 
 function switchMailbox(mailbox) {
   state.currentMailbox = mailbox;
-  document.querySelectorAll('.subtab-btn').forEach(b =>
+  document.querySelectorAll('.mail-subtabs .subtab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.mailbox === mailbox)
   );
   closeMailTray();
@@ -591,7 +1044,7 @@ document.querySelectorAll('.tab-btn').forEach(btn =>
   btn.addEventListener('click', () => switchTab(btn.dataset.tab))
 );
 
-document.querySelectorAll('.subtab-btn').forEach(btn =>
+document.querySelectorAll('.mail-subtabs .subtab-btn').forEach(btn =>
   btn.addEventListener('click', () => switchMailbox(btn.dataset.mailbox))
 );
 
@@ -629,6 +1082,37 @@ document.querySelectorAll('#hist-table th.sortable').forEach(th => {
 });
 
 document.getElementById('tray-close').addEventListener('click', closeMailTray);
+
+// Contacts
+document.getElementById('btn-new-contact').addEventListener('click', () => openNewContactForm());
+document.getElementById('contact-search').addEventListener('input', () => renderContactList(contactsData));
+document.querySelectorAll('.contacts-subtabs .subtab-btn').forEach(btn =>
+  btn.addEventListener('click', () => switchContactsSubtab(btn.dataset.csub))
+);
+
+// Routing rules
+document.getElementById('btn-add-rule').addEventListener('click', () => openRuleForm());
+document.getElementById('btn-save-rule').addEventListener('click', async () => {
+  const body = {
+    name_contains: document.getElementById('rule-name-contains').value.trim(),
+    extensions:    document.getElementById('rule-extensions').value.trim(),
+    subfolder:     document.getElementById('rule-subfolder').value.trim(),
+    priority:      parseInt(document.getElementById('rule-priority').value) || 0,
+  };
+  if (!body.subfolder) { alert('Le sous-dossier est requis.'); return; }
+  if (editingRuleId) {
+    await apiFetch('PUT',  `/api/routing-rules/${editingRuleId}`, body);
+  } else {
+    await apiFetch('POST', '/api/routing-rules', body);
+  }
+  editingRuleId = null;
+  document.getElementById('rule-form-panel').style.display = 'none';
+  await loadRules();
+});
+document.getElementById('btn-cancel-rule').addEventListener('click', () => {
+  editingRuleId = null;
+  document.getElementById('rule-form-panel').style.display = 'none';
+});
 
 document.getElementById('modal-close').addEventListener('click', () => {
   document.getElementById('payload-modal').style.display = 'none';
