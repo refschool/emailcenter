@@ -20,6 +20,10 @@ class Config:
     # Attachments
     attachments_dir: str = os.getenv('ATTACHMENTS_DIR', 'attachments')
 
+    # Webhook
+    payloads_dir: str    = os.getenv('PAYLOADS_DIR', 'payloads')
+    webhook_secret: str  = os.getenv('WEBHOOK_SECRET', '')
+
     # Limites Gmail (500/jour gratuit, 2000/jour Workspace)
     rate_limit_per_day: int = int(os.getenv('RATE_LIMIT_DAY', 500))
     rate_limit_per_second: float = float(os.getenv('RATE_LIMIT_SEC', 0.5))

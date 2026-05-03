@@ -14,6 +14,7 @@ from database import get_conn, apply_migrations
 from template_engine import render_template
 from mailer import send_email
 import gmail_sync
+import payload_watcher
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 
@@ -21,6 +22,7 @@ REDIRECT_URI = 'http://localhost:5000/oauth2callback'
 _flows: dict = {}
 
 apply_migrations()
+payload_watcher.ensure_dirs()
 
 
 # ── Static ────────────────────────────────────────────────────────────────────
@@ -89,12 +91,59 @@ def api_templates():
     return jsonify([p.stem for p in sorted(tmpl_dir.glob('*.html'))])
 
 
+@app.route('/api/payloads')
+def api_payloads_list():
+    files = sorted(payload_watcher.PAYLOADS_DIR.glob('*.json'), key=lambda p: p.stat().st_mtime, reverse=True)
+    result = []
+    for p in files:
+        try:
+            data = json.loads(p.read_text(encoding='utf-8'))
+        except Exception:
+            data = {}
+        result.append({'file': p.name, 'payload': data})
+    return jsonify(result)
+
+
 @app.route('/api/payloads/<template_id>')
 def api_payload(template_id):
-    path = Path('payloads') / f'{template_id}.json'
+    candidates = sorted(
+        payload_watcher.PAYLOADS_DIR.glob(f'{template_id}_*.json'),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    path = candidates[0] if candidates else payload_watcher.PAYLOADS_DIR / f'{template_id}.json'
     if not path.exists():
-        return jsonify({})
-    return jsonify(json.loads(path.read_text(encoding='utf-8')))
+        return jsonify({'file': None, 'payload': {}})
+    return jsonify({
+        'file':    path.name,
+        'payload': json.loads(path.read_text(encoding='utf-8')),
+    })
+
+
+# ── Webhook ───────────────────────────────────────────────────────────────────
+
+@app.route('/api/webhook/payload', methods=['POST'])
+def api_webhook_payload():
+    secret = config.webhook_secret
+    if secret:
+        auth = request.headers.get('Authorization', '')
+        if auth != f'Bearer {secret}':
+            return jsonify({'error': 'Unauthorized'}), 401
+
+    payload = request.get_json(force=True, silent=True)
+    if not payload:
+        return jsonify({'error': 'Invalid JSON body'}), 400
+
+    missing = [f for f in ('template_id', 'to') if not payload.get(f)]
+    if missing:
+        return jsonify({'error': f'Missing fields: {missing}'}), 400
+
+    ts       = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')
+    filename = f'{payload["template_id"]}_{ts}.json'
+    dest     = payload_watcher.PAYLOADS_DIR / filename
+    dest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    return jsonify({'status': 'queued', 'file': filename}), 202
 
 
 # ── Preview ───────────────────────────────────────────────────────────────────
@@ -139,6 +188,7 @@ def api_compose_send():
     template_data_s = request.form.get('template_data', '{}')
     business_meta   = request.form.get('business_metadata', '{}')
     is_draft        = request.form.get('is_draft', '0') == '1'
+    payload_file    = request.form.get('payload_file', '').strip()
 
     try:
         template_data = json.loads(template_data_s)
@@ -249,6 +299,8 @@ def api_compose_send():
             eid = cur.lastrowid
             _insert_attachments(conn, eid, att_rows)
         conn.close()
+        if payload_file:
+            (payload_watcher.PAYLOADS_DIR / Path(payload_file).name).unlink(missing_ok=True)
         return jsonify({'status': 'sent', 'id': eid, 'gmail_message_id': gmail_id})
 
     except Exception as e:

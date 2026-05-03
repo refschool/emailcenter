@@ -1,6 +1,7 @@
 {
   "to": "lamine.sina1950@gmail.com",
   "subject": "Emargement mois de {{ mois }} ",
+  "template_id": "emargement",
   "data": {
     "prenom": "Nacer",
     "mois": "Avril 2026"

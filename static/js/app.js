@@ -6,6 +6,7 @@ const state = {
   currentMailbox:    'INBOX',
   attachments:       [],   // { type:'payload'|'upload', ... }
   syncIntervalHours: 6,
+  currentPayloadFile: null,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -106,7 +107,10 @@ async function loadTemplateList() {
 async function onTemplateChange(templateId) {
   if (!templateId) return;
   try {
-    const payload = await apiFetch('GET', `/api/payloads/${templateId}`);
+    const result  = await apiFetch('GET', `/api/payloads/${templateId}`);
+    const payload = result.payload || {};
+    state.currentPayloadFile = result.file || null;
+
     document.getElementById('payload-raw').value = JSON.stringify(payload, null, 2);
 
     // Reset payload attachments, keep user uploads
@@ -262,6 +266,7 @@ async function composeSend(isDraft) {
     }
   });
   fd.append('default_attachments', JSON.stringify(payloadAtts));
+  if (state.currentPayloadFile) fd.append('payload_file', state.currentPayloadFile);
 
   const btnSend  = document.getElementById('btn-send');
   const btnDraft = document.getElementById('btn-draft');
@@ -278,7 +283,8 @@ async function composeSend(isDraft) {
       document.getElementById('payload-raw').value      = '';
       document.getElementById('business-metadata').value = '';
       document.getElementById('preview-to').textContent  = '';
-      state.attachments = [];
+      state.attachments        = [];
+      state.currentPayloadFile = null;
       renderAttachments();
     }
   } catch (e) {

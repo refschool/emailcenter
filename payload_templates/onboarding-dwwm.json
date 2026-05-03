@@ -1,6 +1,7 @@
 {
   "to": "referencementschool@gmail.com",
   "subject": "Onboarding {{ course }} ",
+  "template_id": "onboarding-dwwm",
   "data": {
     "prenom": "",
     "cours": "Symfony 6",
