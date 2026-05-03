@@ -807,7 +807,10 @@ function openNewContactForm(prefillEmail = '') {
         <label>Dossier <span class="hint">chemin absolu vers le dossier du contact</span></label>
         ${_folderFieldHTML()}
       </div>
-      ${prefillEmail ? `<div class="field-group"><label>Email initial</label><input type="email" id="cd-prefill-email" value="${esc(prefillEmail)}"></div>` : ''}
+      <div class="field-group">
+        <label>Email <span class="hint">adresse principale</span></label>
+        <input type="email" id="cd-prefill-email" value="${esc(prefillEmail)}" placeholder="jean@dupont.fr">
+      </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-primary btn-sm" id="btn-create-contact">Créer</button>
         <button class="btn btn-sm" id="btn-cancel-new">Annuler</button>

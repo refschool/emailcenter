@@ -505,6 +505,13 @@ def api_create_contact():
     body = request.get_json()
     if not body.get('name') or not body.get('folder_path'):
         return jsonify({'error': 'name and folder_path required'}), 400
+
+    # Accept a single email or a list [{email, label}]
+    single_email = body.get('email', '').strip().lower()
+    email_list   = body.get('emails', [])
+    if single_email:
+        email_list = [{'email': single_email, 'label': body.get('label', '')}] + list(email_list)
+
     conn = get_conn()
     with conn:
         cur = conn.execute(
@@ -512,6 +519,17 @@ def api_create_contact():
             (body['name'], body['folder_path'], body.get('type', 'prospect'))
         )
         cid = cur.lastrowid
+        for entry in email_list:
+            addr = (entry.get('email') or '').strip().lower()
+            if addr:
+                import sqlite3 as _sqlite3
+                try:
+                    conn.execute(
+                        'INSERT INTO contact_emails (contact_id, email, label) VALUES (?, ?, ?)',
+                        (cid, addr, entry.get('label', ''))
+                    )
+                except _sqlite3.IntegrityError:
+                    pass  # duplicate email — skip silently
     conn.close()
     return jsonify({'id': cid}), 201
 
