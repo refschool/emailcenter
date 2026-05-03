@@ -394,6 +394,7 @@ nav.tabs {
   white-space: nowrap;
 }
 
+.mail-table tr { cursor: pointer; }
 .mail-table tr:hover td { background: var(--bg); }
 
 .mail-table .col-date    { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
@@ -404,6 +405,108 @@ nav.tabs {
   text-align: center;
   color: var(--text-muted);
 }
+
+/* ── Mail tray ───────────────────────────────────────────────────────────── */
+
+#mail-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.mail-tray {
+  width: 360px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+  transition: width 0.18s ease;
+}
+
+.mail-tray--closed {
+  width: 0;
+  border-left: none;
+}
+
+.tray-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tray-subject {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tray-meta {
+  flex-shrink: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.tray-meta-row { color: var(--text-muted); }
+.tray-meta-row strong { color: var(--text); font-weight: 500; }
+
+.tray-attachments {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tray-attachments:empty { display: none; }
+
+.tray-atts-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.tray-atts-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.tray-atts-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tray-snippet {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tray-snippet a { color: var(--primary); }
 
 /* ── History tab ─────────────────────────────────────────────────────────── */
 

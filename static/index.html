@@ -98,22 +98,36 @@
       <button class="btn btn-sm btn-primary" id="btn-sync">Sync Gmail</button>
     </div>
 
-    <div id="mail-table-wrap">
-      <table class="mail-table">
-        <thead>
-          <tr>
-            <th style="width:220px">From / To</th>
-            <th>Subject</th>
-            <th style="width:140px">Date</th>
-            <th>Preview</th>
-          </tr>
-        </thead>
-        <tbody id="mail-tbody"></tbody>
-      </table>
-      <div id="mail-empty" class="empty-state" style="display:none">
-        No messages. Click <strong>Sync Gmail</strong> to load.
+    <div id="mail-body">
+
+      <div id="mail-table-wrap">
+        <table class="mail-table">
+          <thead>
+            <tr>
+              <th style="width:220px">From / To</th>
+              <th>Subject</th>
+              <th style="width:140px">Date</th>
+              <th>Preview</th>
+            </tr>
+          </thead>
+          <tbody id="mail-tbody"></tbody>
+        </table>
+        <div id="mail-empty" class="empty-state" style="display:none">
+          No messages. Click <strong>Sync Gmail</strong> to load.
+        </div>
       </div>
-    </div>
+
+      <aside id="mail-tray" class="mail-tray mail-tray--closed">
+        <div class="tray-header">
+          <button class="btn btn-sm" id="tray-close">✕</button>
+          <span id="tray-subject" class="tray-subject"></span>
+        </div>
+        <div class="tray-meta" id="tray-meta"></div>
+        <div class="tray-attachments" id="tray-attachments"></div>
+        <div class="tray-snippet" id="tray-snippet"></div>
+      </aside>
+
+    </div><!-- /mail-body -->
 
   </div>
 </div>

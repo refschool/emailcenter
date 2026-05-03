@@ -8,7 +8,7 @@ load_dotenv()
 
 from flask import Flask, redirect, request, jsonify, send_from_directory, send_file
 
-from auth import build_auth_flow, exchange_and_save, is_authenticated
+from auth import build_auth_flow, exchange_and_save, is_authenticated, get_credentials
 from config import config
 from database import get_conn, apply_migrations
 from template_engine import render_template
@@ -368,6 +368,35 @@ def api_gmail_sync():
     try:
         count = gmail_sync.sync()
         return jsonify({'synced': count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/gmail/message/<gmail_message_id>')
+def api_gmail_message(gmail_message_id):
+    if not is_authenticated():
+        return jsonify({'error': 'Not authenticated'}), 401
+    try:
+        from googleapiclient.discovery import build
+        service = build('gmail', 'v1', credentials=get_credentials())
+        msg     = service.users().messages().get(
+            userId='me', id=gmail_message_id, format='full'
+        ).execute()
+
+        attachments = []
+
+        def _walk(parts):
+            for part in parts or []:
+                if part.get('filename'):
+                    attachments.append({
+                        'name':      part['filename'],
+                        'mime_type': part.get('mimeType', ''),
+                        'size':      part.get('body', {}).get('size', 0),
+                    })
+                _walk(part.get('parts', []))
+
+        _walk(msg.get('payload', {}).get('parts', []))
+        return jsonify({'attachments': attachments})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

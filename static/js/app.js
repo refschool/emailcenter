@@ -342,8 +342,67 @@ function renderMessages(msgs) {
       <td class="col-date">${fmtDate(m.date)}</td>
       <td class="col-snippet">${esc(m.snippet || '')}</td>
     `;
+    tr.addEventListener('click', () => openMailTray(m));
     tbody.appendChild(tr);
   });
+}
+
+function decodeEntities(str) {
+  const el = document.createElement('textarea');
+  el.innerHTML = str;
+  return el.value;
+}
+
+function linkify(text) {
+  return text.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
+    if (i % 2 === 1) {
+      const safe = esc(part);
+      return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>`;
+    }
+    return esc(part);
+  }).join('');
+}
+
+async function openMailTray(msg) {
+  document.getElementById('tray-subject').textContent = msg.subject || '(no subject)';
+
+  const rows = [
+    ['De',    msg.from_address],
+    ['À',     msg.to_address],
+    msg.cc_address ? ['Cc', msg.cc_address] : null,
+    ['Date',  fmtDate(msg.date)],
+    msg.labels ? ['Labels', msg.labels] : null,
+  ].filter(Boolean);
+
+  document.getElementById('tray-meta').innerHTML = rows
+    .map(([k, v]) => `<div class="tray-meta-row"><strong>${k} :</strong> ${esc(v || '—')}</div>`)
+    .join('');
+
+  document.getElementById('tray-snippet').innerHTML =
+    linkify(decodeEntities(msg.snippet || ''));
+
+  const attsEl = document.getElementById('tray-attachments');
+  attsEl.innerHTML = '';
+
+  document.getElementById('mail-tray').classList.remove('mail-tray--closed');
+
+  if (msg.gmail_message_id) {
+    try {
+      const data = await apiFetch('GET', `/api/gmail/message/${msg.gmail_message_id}`);
+      const atts = data.attachments || [];
+      if (atts.length) {
+        attsEl.innerHTML = `
+          <div class="tray-atts-label">Pièces jointes (${atts.length})</div>
+          <ul class="tray-atts-list">
+            ${atts.map(a => `<li><span>${esc(a.name)}</span><span class="hint">${fmtBytes(a.size)}</span></li>`).join('')}
+          </ul>`;
+      }
+    } catch { /* no-op — non-blocking */ }
+  }
+}
+
+function closeMailTray() {
+  document.getElementById('mail-tray').classList.add('mail-tray--closed');
 }
 
 async function triggerSync(silent = false) {
@@ -522,6 +581,7 @@ function switchMailbox(mailbox) {
   document.querySelectorAll('.subtab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.mailbox === mailbox)
   );
+  closeMailTray();
   loadMessages();
 }
 
@@ -567,6 +627,8 @@ document.querySelectorAll('#hist-table th.sortable').forEach(th => {
     loadHistory();
   });
 });
+
+document.getElementById('tray-close').addEventListener('click', closeMailTray);
 
 document.getElementById('modal-close').addEventListener('click', () => {
   document.getElementById('payload-modal').style.display = 'none';
