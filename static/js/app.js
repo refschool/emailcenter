@@ -342,7 +342,9 @@ function renderMessages(msgs) {
 async function triggerSync(silent = false) {
   const btn = document.getElementById('btn-sync');
   btn.disabled = true;
-  if (!silent) btn.textContent = 'Syncing…';
+  if (!silent) {
+    btn.innerHTML = '<span class="btn-spinner"></span>Syncing…';
+  }
 
   try {
     const r = await apiFetch('POST', '/api/gmail/sync');
@@ -354,8 +356,8 @@ async function triggerSync(silent = false) {
     if (!silent)
       document.getElementById('sync-status').textContent = `Sync error: ${e.message}`;
   } finally {
-    btn.disabled    = false;
-    btn.textContent = 'Sync Gmail';
+    btn.disabled   = false;
+    btn.innerHTML  = 'Sync Gmail';
   }
 }
 
