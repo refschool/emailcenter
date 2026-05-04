@@ -93,7 +93,7 @@ def _incremental_sync(service, conn, history_id: str) -> int:
         kwargs = dict(
             userId='me',
             startHistoryId=history_id,
-            historyTypes=['messageAdded'],
+            historyTypes=['messageAdded', 'messageDeleted'],
         )
         if page_token:
             kwargs['pageToken'] = page_token
@@ -117,6 +117,13 @@ def _incremental_sync(service, conn, history_id: str) -> int:
                 _fetch_and_insert(service, conn, mid, mailbox)
                 total += 1
 
+            for deleted in record.get('messagesDeleted', []):
+                mid = deleted.get('message', {}).get('id')
+                if mid:
+                    conn.execute(
+                        'DELETE FROM gmail_messages WHERE gmail_message_id = ?', (mid,)
+                    )
+
         page_token = resp.get('nextPageToken')
         if not page_token:
             break
@@ -125,6 +132,85 @@ def _incremental_sync(service, conn, history_id: str) -> int:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
+def reconcile_sync(per_mailbox: int = 50) -> dict:
+    """Compare top-N Gmail IDs per mailbox with local DB — no wipe."""
+    creds   = get_credentials()
+    service = build('gmail', 'v1', credentials=creds)
+    conn    = get_conn()
+
+    added = removed = 0
+
+    for mailbox, label in _MAILBOXES.items():
+        resp = service.users().messages().list(
+            userId='me', labelIds=[label], maxResults=per_mailbox
+        ).execute()
+        gmail_ids = [ref['id'] for ref in resp.get('messages', [])]
+        if not gmail_ids:
+            continue
+
+        gmail_id_set  = set(gmail_ids)
+        placeholders  = ','.join('?' * len(gmail_ids))
+
+        # Find the oldest date within this fetched window (using already-local rows)
+        local_known = conn.execute(
+            f'SELECT gmail_message_id, date FROM gmail_messages'
+            f' WHERE mailbox = ? AND gmail_message_id IN ({placeholders})',
+            [mailbox] + gmail_ids
+        ).fetchall()
+
+        local_id_set = {r['gmail_message_id'] for r in local_known}
+
+        if local_known:
+            dates = [r['date'] for r in local_known if r['date']]
+            if dates:
+                window_floor = min(dates)
+                cur = conn.execute(
+                    f'DELETE FROM gmail_messages'
+                    f' WHERE mailbox = ? AND date >= ? AND gmail_message_id NOT IN ({placeholders})',
+                    [mailbox, window_floor] + gmail_ids
+                )
+                removed += cur.rowcount
+
+        # Insert any Gmail ID not yet in local DB
+        for mid in gmail_ids:
+            if mid not in local_id_set:
+                _fetch_and_insert(service, conn, mid, mailbox)
+                added += 1
+
+    profile        = service.users().getProfile(userId='me').execute()
+    new_history_id = str(profile.get('historyId', ''))
+    conn.execute(
+        'UPDATE sync_state SET last_synced_at = ?, history_id = ? WHERE id = 1',
+        (datetime.now(timezone.utc).isoformat(), new_history_id)
+    )
+    conn.commit()
+    conn.close()
+    return {'added': added, 'removed': removed}
+
+
+def full_reset_sync(max_per_mailbox: int = 200) -> int:
+    """Wipe local cache and re-fetch from Gmail. Picks up deletions."""
+    creds   = get_credentials()
+    service = build('gmail', 'v1', credentials=creds)
+    conn    = get_conn()
+
+    conn.execute('DELETE FROM gmail_messages')
+    conn.execute('UPDATE sync_state SET history_id = NULL WHERE id = 1')
+    conn.commit()
+
+    total = _full_sync(service, conn, max_per_mailbox)
+
+    profile        = service.users().getProfile(userId='me').execute()
+    new_history_id = str(profile.get('historyId', ''))
+    conn.execute(
+        'UPDATE sync_state SET last_synced_at = ?, history_id = ? WHERE id = 1',
+        (datetime.now(timezone.utc).isoformat(), new_history_id)
+    )
+    conn.commit()
+    conn.close()
+    return total
+
 
 def sync(max_per_mailbox: int = 100) -> int:
     creds   = get_credentials()

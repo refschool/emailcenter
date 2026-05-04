@@ -56,3 +56,15 @@ Design plugin
 
 run the program
 python main.py payload.json
+
+{"template_id":"welcome","to":"yvon.huynh@gmail.com","subject":"Bienvenue, {{ first_name }} !","attachments":[
+  {"path":"attachments/CGU.pdf","filename":"CGU.pdf"},
+  {"path":"attachments/Livret Accueil.pdf","filename":"Livret Accueil.pdf"},
+  {"path":"attachments/Règlement-intérieur.pdf","filename":"Règlement-intérieur.pdf"}],
+  "data":{"first_name":"Yvon"}}
+
+
+    {"Content-Type": "application/json",  "Authorization": "Bearer super_secret_key_12345"}
+
+
+    http://localhost:5000/api/webhook/payload 

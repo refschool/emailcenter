@@ -96,6 +96,7 @@
       <button class="btn btn-sm btn-outline" id="btn-filter">Filter</button>
       <div class="toolbar-spacer"></div>
       <span id="sync-status" class="hint"></span>
+      <button class="btn btn-sm btn-outline" id="btn-sync-reset" title="Réconcilie les 50 emails les plus récents par boîte (ajoute manquants, supprime effacés)">↺ Reconcile</button>
       <button class="btn btn-sm btn-primary" id="btn-sync">Sync Gmail</button>
     </div>
 
@@ -269,6 +270,21 @@
     </div>
     <div class="modal-body">
       <div id="payload-view"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Shared folder browser overlay -->
+<div id="folder-picker" class="fp-overlay" style="display:none">
+  <div class="folder-picker">
+    <div class="folder-picker-nav">
+      <button class="btn btn-sm" id="fp-up" type="button" disabled>↑ Haut</button>
+      <span class="fp-current" id="fp-current"></span>
+    </div>
+    <ul class="fp-list" id="fp-list"></ul>
+    <div class="fp-actions">
+      <button class="btn btn-sm btn-primary" id="fp-select" type="button">Sélectionner ce dossier</button>
+      <button class="btn btn-sm" id="fp-close" type="button">Fermer</button>
     </div>
   </div>
 </div>

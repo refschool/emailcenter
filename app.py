@@ -365,9 +365,16 @@ def api_composed():
 def api_gmail_sync():
     if not is_authenticated():
         return jsonify({'error': 'Not authenticated'}), 401
+    mode = request.args.get('reset', '')
     try:
+        if mode == 'full':
+            result = gmail_sync.full_reset_sync()
+            return jsonify({'synced': result, 'mode': 'full_reset'})
+        if mode == '1':
+            result = gmail_sync.reconcile_sync()
+            return jsonify({'synced': result['added'], 'removed': result['removed'], 'mode': 'reconcile'})
         count = gmail_sync.sync()
-        return jsonify({'synced': count})
+        return jsonify({'synced': count, 'mode': 'incremental'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -660,7 +667,7 @@ def api_classify(gmail_message_id):
 
     conn = get_conn()
     row  = conn.execute(
-        'SELECT from_address FROM gmail_messages WHERE gmail_message_id = ?',
+        'SELECT from_address, subject FROM gmail_messages WHERE gmail_message_id = ?',
         (gmail_message_id,)
     ).fetchone()
     conn.close()
@@ -669,20 +676,38 @@ def api_classify(gmail_message_id):
 
     sender = _extract_email(row['from_address'] or '')
 
-    conn = get_conn()
-    contact_row = conn.execute('''
-        SELECT c.id, c.name, c.folder_path, c.type
-        FROM contacts c
-        JOIN contact_emails ce ON ce.contact_id = c.id
-        WHERE ce.email = ?
-    ''', (sender,)).fetchone()
+    # If the subject contains an email address, try that contact first.
+    # Handles the case where the user emails themselves with a student's address in the subject.
+    contact_row = None
+    subject_email = None
+    subject_match = _re.search(r'[\w.+-]+@[\w-]+\.[\w.]+', row['subject'] or '')
+    if subject_match:
+        subject_email = subject_match.group(0).strip().lower()
+        conn = get_conn()
+        contact_row = conn.execute('''
+            SELECT c.id, c.name, c.folder_path, c.type
+            FROM contacts c
+            JOIN contact_emails ce ON ce.contact_id = c.id
+            WHERE ce.email = ?
+        ''', (subject_email,)).fetchone()
+        conn.close()
 
     if not contact_row:
+        conn = get_conn()
+        contact_row = conn.execute('''
+            SELECT c.id, c.name, c.folder_path, c.type
+            FROM contacts c
+            JOIN contact_emails ce ON ce.contact_id = c.id
+            WHERE ce.email = ?
+        ''', (sender,)).fetchone()
         conn.close()
+
+    if not contact_row:
         return jsonify({'contact': None, 'sender': row['from_address'], 'suggestions': []})
 
     contact = dict(contact_row)
-    rules   = [dict(r) for r in conn.execute(
+    conn = get_conn()
+    rules = [dict(r) for r in conn.execute(
         'SELECT * FROM routing_rules ORDER BY priority DESC, id'
     ).fetchall()]
     conn.close()
@@ -724,6 +749,13 @@ def api_classify(gmail_message_id):
     return jsonify({'contact': contact, 'sender': row['from_address'], 'suggestions': suggestions})
 
 
+@app.route('/api/check_files', methods=['POST'])
+def api_check_files():
+    items = request.get_json() or []
+    existing = [i for i in items if Path(i.get('dest_path', '')).exists()]
+    return jsonify({'existing': existing})
+
+
 @app.route('/api/gmail/message/<gmail_message_id>/download', methods=['POST'])
 def api_gmail_download(gmail_message_id):
     if not is_authenticated():
@@ -746,6 +778,9 @@ def api_gmail_download(gmail_message_id):
             data = _b64.urlsafe_b64decode(att_data['data'])
             dest = Path(item['dest_path'])
             dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.exists():
+                import os, stat as _stat
+                os.chmod(dest, _stat.S_IWRITE)
             dest.write_bytes(data)
             results.append({'name': item['name'], 'path': str(dest), 'ok': True})
         except Exception as e:

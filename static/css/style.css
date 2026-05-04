@@ -839,12 +839,26 @@ th.sort-active::after {
 
 .folder-input-row input[type="text"] { flex: 1; }
 
+.fp-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .folder-picker {
-  margin-top: 4px;
+  width: 480px;
+  max-width: 90vw;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
 }
 
 .folder-picker-nav {
@@ -962,8 +976,15 @@ th.sort-active::after {
   cursor: default;
 }
 
+.classify-dest-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
 .classify-dest-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   font-size: 11px;
   font-family: 'Courier New', monospace;
   padding: 3px 6px;

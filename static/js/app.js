@@ -412,25 +412,30 @@ function closeMailTray() {
   document.getElementById('mail-tray').classList.add('mail-tray--closed');
 }
 
-async function triggerSync(silent = false) {
-  const btn = document.getElementById('btn-sync');
-  btn.disabled = true;
+async function triggerSync(silent = false, reset = false) {
+  const btn      = document.getElementById('btn-sync');
+  const btnReset = document.getElementById('btn-sync-reset');
+  btn.disabled = btnReset.disabled = true;
   if (!silent) {
     btn.innerHTML = '<span class="btn-spinner"></span>Syncing…';
+    if (reset) btnReset.innerHTML = '<span class="btn-spinner"></span>';
   }
 
   try {
-    const r = await apiFetch('POST', '/api/gmail/sync');
-    document.getElementById('sync-status').textContent =
-      `Synced ${r.synced} new messages`;
+    const url = reset ? '/api/gmail/sync?reset=1' : '/api/gmail/sync';
+    const r   = await apiFetch('POST', url);
+    document.getElementById('sync-status').textContent = reset
+      ? `Reconciled — +${r.synced} added, ${r.removed} removed`
+      : `Synced ${r.synced} new messages`;
     await refreshStatus();
     await loadMessages();
   } catch (e) {
     if (!silent)
       document.getElementById('sync-status').textContent = `Sync error: ${e.message}`;
   } finally {
-    btn.disabled   = false;
-    btn.innerHTML  = 'Sync Gmail';
+    btn.disabled = btnReset.disabled = false;
+    btn.innerHTML     = 'Sync Gmail';
+    btnReset.innerHTML = '↺ Reconcile';
   }
 }
 
@@ -570,75 +575,54 @@ function tryParse(str) {
   try { return str ? JSON.parse(str) : null; } catch { return null; }
 }
 
-// ── Folder picker ─────────────────────────────────────────────────────────────
+// ── Folder browser (shared) ───────────────────────────────────────────────────
+
+let _fpData   = null;
+let _fpTarget = null;  // <input> to write selected path into
+
+async function _fpBrowseTo(path) {
+  const url  = path ? `/api/browse?path=${encodeURIComponent(path)}` : '/api/browse';
+  const list = document.getElementById('fp-list');
+  list.innerHTML = '<li class="fp-message">Chargement…</li>';
+  try {
+    _fpData = await apiFetch('GET', url);
+    document.getElementById('fp-current').textContent = _fpData.path || 'Lecteurs disponibles';
+    if (_fpData.entries.length) {
+      list.innerHTML = _fpData.entries
+        .map(e => `<li class="fp-item" data-path="${esc(e.path)}">${esc(e.name)}</li>`)
+        .join('');
+      list.querySelectorAll('.fp-item').forEach(li =>
+        li.addEventListener('click', () => _fpBrowseTo(li.dataset.path))
+      );
+    } else {
+      list.innerHTML = '<li class="fp-message">Aucun sous-dossier</li>';
+    }
+    const upBtn = document.getElementById('fp-up');
+    upBtn.disabled = _fpData.parent === null;
+    upBtn.onclick  = () => _fpBrowseTo(_fpData.parent ?? '');
+  } catch (e) {
+    list.innerHTML = `<li class="fp-message err">${esc(e.message)}</li>`;
+  }
+}
+
+function openFolderBrowser(targetInput, startPath = '') {
+  _fpTarget = targetInput;
+  document.getElementById('folder-picker').style.display = '';
+  _fpBrowseTo(startPath || '');
+}
 
 function _folderFieldHTML(value = '') {
   return `
     <div class="folder-input-row">
       <input type="text" id="cd-folder" value="${esc(value)}" placeholder="D:\\Formapedia\\clients\\dupont">
       <button class="btn btn-sm btn-outline" id="btn-browse-folder" type="button">📁 Browse</button>
-    </div>
-    <div class="folder-picker" id="folder-picker" style="display:none">
-      <div class="folder-picker-nav">
-        <button class="btn btn-sm" id="fp-up" type="button" disabled>↑ Haut</button>
-        <span class="fp-current" id="fp-current"></span>
-      </div>
-      <ul class="fp-list" id="fp-list"></ul>
-      <div class="fp-actions">
-        <button class="btn btn-sm btn-primary" id="fp-select" type="button">Sélectionner ce dossier</button>
-        <button class="btn btn-sm" id="fp-close" type="button">Fermer</button>
-      </div>
     </div>`;
 }
 
 function _wireFolderBrowser() {
-  let _fpData = null;
-
-  async function _browseTo(path) {
-    const url = path ? `/api/browse?path=${encodeURIComponent(path)}` : '/api/browse';
-    const list = document.getElementById('fp-list');
-    list.innerHTML = '<li class="fp-message">Chargement…</li>';
-    try {
-      _fpData = await apiFetch('GET', url);
-      document.getElementById('fp-current').textContent = _fpData.path || 'Lecteurs disponibles';
-
-      if (_fpData.entries.length) {
-        list.innerHTML = _fpData.entries
-          .map(e => `<li class="fp-item" data-path="${esc(e.path)}">${esc(e.name)}</li>`)
-          .join('');
-        list.querySelectorAll('.fp-item').forEach(li =>
-          li.addEventListener('click', () => _browseTo(li.dataset.path))
-        );
-      } else {
-        list.innerHTML = '<li class="fp-message">Aucun sous-dossier</li>';
-      }
-
-      const upBtn = document.getElementById('fp-up');
-      upBtn.disabled = _fpData.parent === null;
-      upBtn.onclick  = () => _browseTo(_fpData.parent ?? '');
-
-      document.getElementById('fp-select').onclick = () => {
-        if (_fpData.path) document.getElementById('cd-folder').value = _fpData.path;
-        document.getElementById('folder-picker').style.display = 'none';
-      };
-    } catch (e) {
-      list.innerHTML = `<li class="fp-message err">${esc(e.message)}</li>`;
-    }
-  }
-
   document.getElementById('btn-browse-folder').addEventListener('click', () => {
-    const picker = document.getElementById('folder-picker');
-    if (picker.style.display === 'none') {
-      const cur = (document.getElementById('cd-folder').value || '').trim();
-      _browseTo(cur || '');
-      picker.style.display = '';
-    } else {
-      picker.style.display = 'none';
-    }
-  });
-
-  document.getElementById('fp-close').addEventListener('click', () => {
-    document.getElementById('folder-picker').style.display = 'none';
+    const cur = (document.getElementById('cd-folder').value || '').trim();
+    openFolderBrowser(document.getElementById('cd-folder'), cur);
   });
 }
 
@@ -952,10 +936,13 @@ function _renderClassifyForm(el, contact, suggestions) {
       <input type="checkbox" id="clf-${i}" checked>
       <div class="classify-file-info">
         <label for="clf-${i}" class="classify-filename" title="${esc(s.name)}">${esc(s.name)}</label>
-        <input class="classify-dest-input"
-               value="${esc(s.dest_path)}"
-               data-att-id="${esc(s.attachment_id)}"
-               data-name="${esc(s.name)}">
+        <div class="classify-dest-row">
+          <input class="classify-dest-input" id="clf-dest-${i}"
+                 value="${esc(s.dest_path)}"
+                 data-att-id="${esc(s.attachment_id)}"
+                 data-name="${esc(s.name)}">
+          <button class="btn btn-sm btn-outline clf-browse" type="button" data-idx="${i}" title="Parcourir">📁</button>
+        </div>
       </div>
     </li>`).join('');
 
@@ -970,6 +957,13 @@ function _renderClassifyForm(el, contact, suggestions) {
       <button class="btn btn-sm" id="btn-cancel-classify">Annuler</button>
     </div>
     <div class="classify-result" id="classify-result"></div>`;
+
+  el.querySelectorAll('.clf-browse').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const inp = document.getElementById(`clf-dest-${btn.dataset.idx}`);
+      openFolderBrowser(inp, contact.folder_path);
+    });
+  });
 
   document.getElementById('btn-cancel-classify').addEventListener('click', () => {
     el.innerHTML = `<div class="classify-btn-row">
@@ -995,6 +989,12 @@ async function _confirmDownload(el, gmailMessageId) {
     });
   });
   if (!items.length) return;
+
+  const checkRes = await apiFetch('POST', '/api/check_files', items);
+  if (checkRes.existing.length > 0) {
+    const names = checkRes.existing.map(f => f.name).join('\n');
+    if (!confirm(`Ces fichiers existent déjà :\n\n${names}\n\nVoulez-vous les écraser ?`)) return;
+  }
 
   const btn = document.getElementById('btn-confirm-classify');
   btn.disabled    = true;
@@ -1065,7 +1065,8 @@ document.getElementById('template-select').addEventListener('change', e => {
 document.getElementById('btn-preview').addEventListener('click', doPreview);
 document.getElementById('btn-send').addEventListener('click',  () => composeSend(false));
 document.getElementById('btn-draft').addEventListener('click', () => composeSend(true));
-document.getElementById('btn-sync').addEventListener('click',  () => triggerSync(false));
+document.getElementById('btn-sync').addEventListener('click',       () => triggerSync(false));
+document.getElementById('btn-sync-reset').addEventListener('click', () => triggerSync(false, true));
 document.getElementById('btn-filter').addEventListener('click', loadMessages);
 
 // History
@@ -1115,6 +1116,24 @@ document.getElementById('btn-save-rule').addEventListener('click', async () => {
 document.getElementById('btn-cancel-rule').addEventListener('click', () => {
   editingRuleId = null;
   document.getElementById('rule-form-panel').style.display = 'none';
+});
+
+// Folder browser (shared picker)
+document.getElementById('fp-select').addEventListener('click', () => {
+  if (_fpData?.path && _fpTarget) {
+    const filename = _fpTarget.dataset.name;
+    _fpTarget.value = filename
+      ? _fpData.path.replace(/[/\\]+$/, '') + '\\' + filename
+      : _fpData.path;
+  }
+  document.getElementById('folder-picker').style.display = 'none';
+});
+document.getElementById('fp-close').addEventListener('click', () => {
+  document.getElementById('folder-picker').style.display = 'none';
+});
+document.getElementById('folder-picker').addEventListener('click', e => {
+  if (e.target === e.currentTarget)
+    e.currentTarget.style.display = 'none';
 });
 
 document.getElementById('modal-close').addEventListener('click', () => {
