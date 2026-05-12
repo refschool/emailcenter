@@ -1,0 +1,24 @@
+{
+    "hooks": {
+        "Notification": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "powershell -c \"[console]::beep(800,300)\""
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "powershell -c \"[console]::beep(1200,400)\""
+                    }
+                ]
+            }
+        ]
+    }
+}

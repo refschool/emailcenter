@@ -1,0 +1,1 @@
+ALTER TABLE gmail_messages ADD COLUMN has_attachment INTEGER NOT NULL DEFAULT 0;

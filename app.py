@@ -390,6 +390,7 @@ def api_gmail_message(gmail_message_id):
     if not is_authenticated():
         return jsonify({'error': 'Not authenticated'}), 401
     try:
+        import base64 as _b64
         from googleapiclient.discovery import build
         service = build('gmail', 'v1', credentials=get_credentials())
         msg     = service.users().messages().get(
@@ -397,19 +398,50 @@ def api_gmail_message(gmail_message_id):
         ).execute()
 
         attachments = []
+        html_body   = None
+        text_body   = None
 
         def _walk(parts):
+            nonlocal html_body, text_body
             for part in parts or []:
+                mime = part.get('mimeType', '')
+                data = part.get('body', {}).get('data', '')
+                if data and not part.get('filename'):
+                    try:
+                        decoded = _b64.urlsafe_b64decode(data + '==').decode('utf-8', errors='replace')
+                        if mime == 'text/html' and html_body is None:
+                            html_body = decoded
+                        elif mime == 'text/plain' and text_body is None:
+                            text_body = decoded
+                    except Exception:
+                        pass
                 if part.get('filename'):
                     attachments.append({
                         'name':      part['filename'],
-                        'mime_type': part.get('mimeType', ''),
+                        'mime_type': mime,
                         'size':      part.get('body', {}).get('size', 0),
                     })
                 _walk(part.get('parts', []))
 
-        _walk(msg.get('payload', {}).get('parts', []))
-        return jsonify({'attachments': attachments})
+        payload = msg.get('payload', {})
+        # Simple (non-multipart) messages store body directly in payload
+        top_data = payload.get('body', {}).get('data', '')
+        if top_data and not html_body and not text_body:
+            try:
+                decoded = _b64.urlsafe_b64decode(top_data + '==').decode('utf-8', errors='replace')
+                if payload.get('mimeType') == 'text/html':
+                    html_body = decoded
+                else:
+                    text_body = decoded
+            except Exception:
+                pass
+        _walk(payload.get('parts', []))
+
+        return jsonify({
+            'attachments': attachments,
+            'html_body':   html_body,
+            'text_body':   text_body,
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

@@ -40,18 +40,28 @@ def _label_to_mailbox(label_ids: list) -> str | None:
     return None
 
 
+def _has_attachments(parts) -> bool:
+    for part in parts or []:
+        if part.get('filename'):
+            return True
+        if _has_attachments(part.get('parts', [])):
+            return True
+    return False
+
+
 def _fetch_and_insert(service, conn, mid: str, mailbox: str) -> None:
     msg = service.users().messages().get(
-        userId='me', id=mid, format='metadata',
+        userId='me', id=mid, format='full',
         metadataHeaders=['From', 'To', 'Cc', 'Subject', 'Date']
     ).execute()
-    h = _parse_headers(msg.get('payload', {}).get('headers', []))
+    h           = _parse_headers(msg.get('payload', {}).get('headers', []))
+    has_att     = 1 if _has_attachments(msg.get('payload', {}).get('parts', [])) else 0
     conn.execute("""
         INSERT OR IGNORE INTO gmail_messages
             (gmail_message_id, thread_id, mailbox,
              from_address, to_address, cc_address,
-             subject, snippet, labels, date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             subject, snippet, labels, date, has_attachment)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         mid,
         msg.get('threadId'),
@@ -61,6 +71,7 @@ def _fetch_and_insert(service, conn, mid: str, mailbox: str) -> None:
         msg.get('snippet', ''),
         json.dumps(msg.get('labelIds', [])),
         _to_iso(h.get('date', '')),
+        has_att,
     ))
     conn.commit()  # release write lock between API calls
 

@@ -343,6 +343,7 @@ function renderMessages(msgs) {
     tr.innerHTML = `
       <td title="${esc(addr)}">${esc(addr)}</td>
       <td title="${esc(m.subject)}">${esc(m.subject || '(no subject)')}</td>
+      <td class="col-att">${m.has_attachment ? '📎' : ''}</td>
       <td class="col-date">${fmtDate(m.date)}</td>
       <td class="col-snippet">${esc(m.snippet || '')}</td>
     `;
@@ -382,8 +383,14 @@ async function openMailTray(msg) {
     .map(([k, v]) => `<div class="tray-meta-row"><strong>${k} :</strong> ${esc(v || '—')}</div>`)
     .join('');
 
-  document.getElementById('tray-snippet').innerHTML =
-    linkify(decodeEntities(msg.snippet || ''));
+  const snippetEl = document.getElementById('tray-snippet');
+  const loaderEl  = document.getElementById('tray-loader');
+  const frameEl   = document.getElementById('tray-body-frame');
+
+  snippetEl.style.display = 'none';
+  loaderEl.style.display  = '';
+  frameEl.style.display   = 'none';
+  frameEl.srcdoc          = '';
 
   const attsEl     = document.getElementById('tray-attachments');
   const classifyEl = document.getElementById('tray-classify');
@@ -395,6 +402,16 @@ async function openMailTray(msg) {
   if (msg.gmail_message_id) {
     try {
       const data = await apiFetch('GET', `/api/gmail/message/${msg.gmail_message_id}`);
+      loaderEl.style.display = 'none';
+
+      if (data.html_body) {
+        frameEl.srcdoc        = data.html_body;
+        frameEl.style.display = '';
+      } else {
+        snippetEl.textContent   = data.text_body || msg.snippet || '';
+        snippetEl.style.display = '';
+      }
+
       const atts = data.attachments || [];
       if (atts.length) {
         attsEl.innerHTML = `
@@ -408,7 +425,15 @@ async function openMailTray(msg) {
         document.getElementById('btn-classer')
           .addEventListener('click', () => classifyAttachments(msg));
       }
-    } catch { /* no-op — non-blocking */ }
+    } catch {
+      loaderEl.style.display  = 'none';
+      snippetEl.textContent   = msg.snippet || '';
+      snippetEl.style.display = '';
+    }
+  } else {
+    loaderEl.style.display  = 'none';
+    snippetEl.textContent   = msg.snippet || '';
+    snippetEl.style.display = '';
   }
 }
 
