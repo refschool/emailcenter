@@ -62,6 +62,7 @@ def _fetch_and_insert(service, conn, mid: str, mailbox: str) -> None:
         json.dumps(msg.get('labelIds', [])),
         _to_iso(h.get('date', '')),
     ))
+    conn.commit()  # release write lock between API calls
 
 
 # ── Full sync (first run) ─────────────────────────────────────────────────────

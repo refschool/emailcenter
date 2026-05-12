@@ -363,10 +363,11 @@ def api_composed():
 
 @app.route('/api/gmail/sync', methods=['POST'])
 def api_gmail_sync():
-    if not is_authenticated():
-        return jsonify({'error': 'Not authenticated'}), 401
-    mode = request.args.get('reset', '')
+    from google.auth.exceptions import RefreshError
     try:
+        if not is_authenticated():
+            return jsonify({'error': 'Not authenticated'}), 401
+        mode = request.args.get('reset', '')
         if mode == 'full':
             result = gmail_sync.full_reset_sync()
             return jsonify({'synced': result, 'mode': 'full_reset'})
@@ -375,6 +376,11 @@ def api_gmail_sync():
             return jsonify({'synced': result['added'], 'removed': result['removed'], 'mode': 'reconcile'})
         count = gmail_sync.sync()
         return jsonify({'synced': count, 'mode': 'incremental'})
+    except RefreshError:
+        return jsonify({
+            'error': "Token expiré ou révoqué. Veuillez renouveler l'authentification.",
+            'auth_expired': True,
+        }), 401
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

@@ -56,7 +56,11 @@ async function apiFetch(method, path, body = null, isForm = false) {
   }
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 
@@ -430,8 +434,11 @@ async function triggerSync(silent = false, reset = false) {
     await refreshStatus();
     await loadMessages();
   } catch (e) {
-    if (!silent)
+    if (e.data?.auth_expired) {
+      document.getElementById('auth-expired-modal').style.display = 'flex';
+    } else if (!silent) {
       document.getElementById('sync-status').textContent = `Sync error: ${e.message}`;
+    }
   } finally {
     btn.disabled = btnReset.disabled = false;
     btn.innerHTML     = 'Sync Gmail';
@@ -1134,6 +1141,16 @@ document.getElementById('fp-close').addEventListener('click', () => {
 document.getElementById('folder-picker').addEventListener('click', e => {
   if (e.target === e.currentTarget)
     e.currentTarget.style.display = 'none';
+});
+
+document.getElementById('auth-expired-close').addEventListener('click', () => {
+  document.getElementById('auth-expired-modal').style.display = 'none';
+});
+document.getElementById('auth-expired-cancel').addEventListener('click', () => {
+  document.getElementById('auth-expired-modal').style.display = 'none';
+});
+document.getElementById('auth-expired-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
 });
 
 document.getElementById('modal-close').addEventListener('click', () => {
