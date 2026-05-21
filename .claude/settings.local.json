@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk ls *)",
+      "Bash(rtk read *)",
+      "Bash(where python *)",
+      "Bash(ipconfig)",
+      "Bash(findstr /i \"IPv4\")",
+      "Bash(Select-String \"IPv4\")",
+      "Bash(rtk grep *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Get-NetTCPConnection *)"
+    ]
+  }
+}

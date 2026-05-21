@@ -1,0 +1,29 @@
+ * Serving Flask app 'app'
+ * Debug mode: on
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 651-182-722
+127.0.0.1 - - [21/May/2026 16:23:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:34] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:34] "GET /css/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:34] "GET /js/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:34] "GET /api/config HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:34] "GET /api/templates HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:34] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [21/May/2026 16:24:36] "GET /api/gmail/messages?mailbox=INBOX HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:58] "POST /api/gmail/sync HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:24:58] "GET /api/gmail/messages?mailbox=INBOX HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:25:29] "POST /api/gmail/sync?reset=1 HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:25:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:25:29] "GET /api/gmail/messages?mailbox=INBOX HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:25:40] "GET /api/gmail/message/19e49d9c88da676b HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:25:42] "POST /api/gmail/message/19e49d9c88da676b/classify HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:25:46] "GET /api/browse?path=D:\\OneDrive\\_autoentrepreneur_yvon\\clientsAE\\99-Divers\\2025\\Nacer%20Khaldi HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:25:47] "GET /api/browse?path=D:\\OneDrive\\_autoentrepreneur_yvon\\clientsAE\\99-Divers\\2025\\Nacer%20Khaldi\\jury HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:25:49] "POST /api/check_files HTTP/1.1" 200 -
+127.0.0.1 - - [21/May/2026 16:25:50] "POST /api/gmail/message/19e49d9c88da676b/download HTTP/1.1" 200 -
