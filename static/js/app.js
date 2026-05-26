@@ -4,6 +4,7 @@
 
 const state = {
   currentMailbox:    'INBOX',
+  currentCategory:   'PRIMARY',
   attachments:       [],   // { type:'payload'|'upload', ... }
   syncIntervalHours: 6,
   currentPayloadFile: null,
@@ -308,6 +309,9 @@ async function loadMessages() {
   const recipient = document.getElementById('filter-recipient').value.trim();
   const label     = document.getElementById('filter-label').value.trim();
 
+  if (state.currentMailbox === 'INBOX' && state.currentCategory) {
+    params.set('category', state.currentCategory);
+  }
   if (dateFrom)  params.set('date_from', dateFrom);
   if (dateTo)    params.set('date_to',   dateTo);
   if (recipient) params.set('recipient', recipient);
@@ -1069,6 +1073,17 @@ function switchMailbox(mailbox) {
   document.querySelectorAll('.mail-subtabs .subtab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.mailbox === mailbox)
   );
+  document.getElementById('mail-categories').style.display =
+    mailbox === 'INBOX' ? '' : 'none';
+  closeMailTray();
+  loadMessages();
+}
+
+function switchCategory(category) {
+  state.currentCategory = category;
+  document.querySelectorAll('.mail-categories .cat-chip').forEach(b =>
+    b.classList.toggle('active', b.dataset.category === category)
+  );
   closeMailTray();
   loadMessages();
 }
@@ -1081,6 +1096,10 @@ document.querySelectorAll('.tab-btn').forEach(btn =>
 
 document.querySelectorAll('.mail-subtabs .subtab-btn').forEach(btn =>
   btn.addEventListener('click', () => switchMailbox(btn.dataset.mailbox))
+);
+
+document.querySelectorAll('.mail-categories .cat-chip').forEach(btn =>
+  btn.addEventListener('click', () => switchCategory(btn.dataset.category))
 );
 
 document.getElementById('template-select').addEventListener('change', e => {

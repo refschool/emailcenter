@@ -11,7 +11,9 @@
       "PowerShell(Get-ChildItem *)",
       "PowerShell(Get-Content *)",
       "PowerShell(Get-NetTCPConnection *)",
-      "Bash(rtk git *)"
+      "Bash(rtk git *)",
+      "Bash(rtk wc *)",
+      "Bash(python *)"
     ]
   }
 }

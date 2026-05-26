@@ -449,6 +449,7 @@ def api_gmail_message(gmail_message_id):
 @app.route('/api/gmail/messages')
 def api_gmail_messages():
     mailbox   = request.args.get('mailbox', 'INBOX')
+    category  = request.args.get('category', '').strip().upper()
     date_from = request.args.get('date_from', '').strip()
     date_to   = request.args.get('date_to', '').strip()
     recipient = request.args.get('recipient', '').strip()
@@ -456,6 +457,26 @@ def api_gmail_messages():
 
     q = 'SELECT * FROM gmail_messages WHERE mailbox = ?'
     params: list = [mailbox]
+
+    # Gmail-style category tabs (only meaningful in INBOX)
+    _CATEGORY_LABELS = {
+        'PRIMARY':    'CATEGORY_PERSONAL',
+        'PROMOTIONS': 'CATEGORY_PROMOTIONS',
+        'SOCIAL':     'CATEGORY_SOCIAL',
+        'UPDATES':    'CATEGORY_UPDATES',
+    }
+    if mailbox == 'INBOX' and category in _CATEGORY_LABELS:
+        if category == 'PRIMARY':
+            # Personal OR no category at all (Gmail's behaviour for "Principale")
+            q += (" AND (labels LIKE ?"
+                  "      OR (labels NOT LIKE '%CATEGORY_PROMOTIONS%'"
+                  "          AND labels NOT LIKE '%CATEGORY_SOCIAL%'"
+                  "          AND labels NOT LIKE '%CATEGORY_UPDATES%'"
+                  "          AND labels NOT LIKE '%CATEGORY_FORUMS%'))")
+            params.append(f'%{_CATEGORY_LABELS[category]}%')
+        else:
+            q += ' AND labels LIKE ?'
+            params.append(f'%{_CATEGORY_LABELS[category]}%')
 
     if date_from:
         q += ' AND date >= ?'

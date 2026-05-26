@@ -146,3 +146,7 @@ Press CTRL+C to quit
 127.0.0.1 - - [26/May/2026 18:17:58] "POST /api/gmail/sync HTTP/1.1" 200 -
 127.0.0.1 - - [26/May/2026 18:17:58] "GET /api/status HTTP/1.1" 200 -
 127.0.0.1 - - [26/May/2026 18:17:58] "GET /api/gmail/messages?mailbox=INBOX HTTP/1.1" 200 -
+ * Detected change in 'E:\\formapedia2026\\EmailCenter\\app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 651-182-722

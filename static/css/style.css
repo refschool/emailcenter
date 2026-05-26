@@ -329,6 +329,38 @@ nav.tabs {
   font-weight: 600;
 }
 
+.mail-categories {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.cat-chip {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+
+.cat-chip:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.cat-chip.active {
+  background: var(--text);
+  color: var(--surface);
+  border-color: var(--text);
+  font-weight: 600;
+}
+
 .mail-toolbar {
   flex-shrink: 0;
   display: flex;
