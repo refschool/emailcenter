@@ -10,7 +10,8 @@
       "Bash(rtk grep *)",
       "PowerShell(Get-ChildItem *)",
       "PowerShell(Get-Content *)",
-      "PowerShell(Get-NetTCPConnection *)"
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(rtk git *)"
     ]
   }
 }
