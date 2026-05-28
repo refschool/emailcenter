@@ -428,6 +428,7 @@ nav.tabs {
 
 .mail-table tr { cursor: pointer; }
 .mail-table tr:hover td { background: var(--bg); }
+.mail-table tr.unread td { font-weight: 700; }
 
 .mail-table .col-att     { text-align: center; font-size: 13px; padding: 0; }
 .mail-table .col-date    { color: var(--text-muted); font-size: 12px; white-space: nowrap; }

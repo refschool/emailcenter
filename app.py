@@ -446,6 +446,39 @@ def api_gmail_message(gmail_message_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/gmail/message/<gmail_message_id>/read', methods=['POST'])
+def api_gmail_mark_read(gmail_message_id):
+    if not is_authenticated():
+        return jsonify({'error': 'Not authenticated'}), 401
+    try:
+        from googleapiclient.discovery import build
+        service = build('gmail', 'v1', credentials=get_credentials())
+        service.users().messages().modify(
+            userId='me', id=gmail_message_id,
+            body={'removeLabelIds': ['UNREAD']},
+        ).execute()
+
+        conn = get_conn()
+        with conn:
+            row = conn.execute(
+                'SELECT labels FROM gmail_messages WHERE gmail_message_id = ?',
+                (gmail_message_id,)
+            ).fetchone()
+            if row and row['labels']:
+                try:
+                    labels = [l for l in json.loads(row['labels']) if l != 'UNREAD']
+                    conn.execute(
+                        'UPDATE gmail_messages SET labels = ? WHERE gmail_message_id = ?',
+                        (json.dumps(labels), gmail_message_id)
+                    )
+                except (ValueError, TypeError):
+                    pass
+        conn.close()
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/gmail/messages')
 def api_gmail_messages():
     mailbox   = request.args.get('mailbox', 'INBOX')

@@ -344,6 +344,7 @@ function renderMessages(msgs) {
       : (m.from_address || '—');
 
     const tr = document.createElement('tr');
+    if (isUnread(m)) tr.classList.add('unread');
     tr.innerHTML = `
       <td title="${esc(addr)}">${esc(addr)}</td>
       <td title="${esc(m.subject)}">${esc(m.subject || '(no subject)')}</td>
@@ -351,9 +352,13 @@ function renderMessages(msgs) {
       <td class="col-date">${fmtDate(m.date)}</td>
       <td class="col-snippet">${esc(m.snippet || '')}</td>
     `;
-    tr.addEventListener('click', () => openMailTray(m));
+    tr.addEventListener('click', () => openMailTray(m, tr));
     tbody.appendChild(tr);
   });
+}
+
+function isUnread(m) {
+  return typeof m.labels === 'string' && m.labels.includes('UNREAD');
 }
 
 function decodeEntities(str) {
@@ -372,8 +377,10 @@ function linkify(text) {
   }).join('');
 }
 
-async function openMailTray(msg) {
+async function openMailTray(msg, rowEl) {
   document.getElementById('tray-subject').textContent = msg.subject || '(no subject)';
+
+  if (isUnread(msg)) markAsRead(msg, rowEl);
 
   const rows = [
     ['De',    msg.from_address],
@@ -443,6 +450,22 @@ async function openMailTray(msg) {
 
 function closeMailTray() {
   document.getElementById('mail-tray').classList.add('mail-tray--closed');
+}
+
+async function markAsRead(msg, rowEl) {
+  if (!msg.gmail_message_id) return;
+  try {
+    await apiFetch('POST', `/api/gmail/message/${msg.gmail_message_id}/read`);
+    // Reflect locally so the row stops showing as unread without a full reload
+    rowEl?.classList.remove('unread');
+    try {
+      msg.labels = JSON.stringify(
+        JSON.parse(msg.labels).filter(l => l !== 'UNREAD')
+      );
+    } catch { /* leave labels as-is */ }
+  } catch (e) {
+    console.error('markAsRead error', e);
+  }
 }
 
 async function triggerSync(silent = false, reset = false) {
