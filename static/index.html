@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EmailCenter</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jodit@4.6.2/es2021/jodit.min.css">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -47,6 +48,16 @@
       </div>
 
       <div class="field-group">
+        <label>Repertoire suggere <span class="hint">depuis sujet / destinataire</span></label>
+        <div class="compose-folder-map">
+          <button class="btn btn-outline" id="btn-folder-suggest" type="button">Deviner dossier</button>
+          <div id="folder-suggestion" class="folder-suggestion folder-suggestion--empty">
+            Aucune suggestion.
+          </div>
+        </div>
+      </div>
+
+      <div class="field-group">
         <label>Pièces jointes</label>
         <div class="attachment-zone">
           <input type="file" id="file-input" multiple hidden>
@@ -66,11 +77,23 @@
 
     <div class="compose-preview">
       <div class="preview-header">
-        <span>Preview</span>
-        <button class="btn btn-sm btn-outline" id="btn-preview">Refresh</button>
+        <span id="preview-title">Preview</span>
+        <div class="preview-actions">
+          <button class="btn btn-sm btn-outline" id="btn-compose-mode">Composer</button>
+          <button class="btn btn-sm btn-outline" id="btn-attach-file">Joindre un fichier</button>
+          <button class="btn btn-sm btn-outline" id="btn-preview">Refresh</button>
+        </div>
       </div>
-      <div id="preview-to" class="preview-to"></div>
-      <div id="preview-subject" class="preview-subject"></div>
+      <div class="compose-recipient-row">
+        <input type="email" id="compose-to" list="recipient-suggestions" placeholder="Destinataire">
+        <datalist id="recipient-suggestions"></datalist>
+      </div>
+      <div class="compose-subject-row">
+        <input type="text" id="compose-subject" placeholder="Objet de l'email">
+      </div>
+      <div id="composer-panel" class="composer-panel" style="display:none">
+        <textarea id="composer-editor"></textarea>
+      </div>
       <iframe id="preview-frame" sandbox="allow-same-origin"></iframe>
     </div>
 
@@ -318,6 +341,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/jodit@4.6.2/es2021/jodit.min.js"></script>
 <script src="/js/app.js"></script>
 </body>
 </html>

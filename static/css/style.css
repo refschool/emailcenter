@@ -168,6 +168,43 @@ nav.tabs {
   letter-spacing: 0;
 }
 
+.compose-folder-map {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.folder-suggestion {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 9px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.folder-suggestion--empty {
+  color: var(--text-muted);
+}
+
+.folder-suggestion-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.folder-suggestion-path {
+  font-family: 'Courier New', Courier, monospace;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.folder-suggestion-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 /* Attachments */
 .attachment-zone {
   display: flex;
@@ -261,25 +298,41 @@ nav.tabs {
   color: var(--text-muted);
 }
 
-.preview-to {
-  flex-shrink: 0;
-  padding: 5px 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-muted);
-  min-height: 26px;
+.preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.preview-subject {
+.compose-recipient-row,
+.compose-subject-row {
   flex-shrink: 0;
   padding: 8px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  font-weight: 600;
+}
+
+.compose-recipient-row input,
+.compose-subject-row input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
   color: var(--text);
-  min-height: 36px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.compose-recipient-row input::placeholder,
+.compose-subject-row input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.compose-recipient-row input {
+  font-size: 13px;
+  font-weight: 500;
 }
 
 #preview-frame {
@@ -287,6 +340,22 @@ nav.tabs {
   border: none;
   width: 100%;
   background: #fff;
+}
+
+.composer-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.composer-panel .jodit-container {
+  border: none;
+  height: 100% !important;
+}
+
+.composer-panel .jodit-workplace {
+  height: calc(100% - 43px) !important;
 }
 
 /* ── Mail layout ─────────────────────────────────────────────────────────── */

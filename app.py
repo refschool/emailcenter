@@ -1,4 +1,6 @@
 import json
+import re
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,6 +70,72 @@ def api_status():
 @app.route('/api/config')
 def api_config():
     return jsonify({'sync_interval_hours': config.gmail_sync_interval_hours})
+
+
+@app.route('/api/recipients/suggest')
+def api_recipients_suggest():
+    q = (request.args.get('q') or '').strip().lower()
+    if len(q) < 2:
+        return jsonify([])
+
+    conn = get_conn()
+    rows = []
+    seen = set()
+
+    contact_rows = conn.execute('''
+        SELECT ce.email, ce.label, c.name
+        FROM contact_emails ce
+        JOIN contacts c ON c.id = ce.contact_id
+        WHERE lower(ce.email) LIKE ?
+           OR lower(c.name) LIKE ?
+           OR lower(ce.label) LIKE ?
+        ORDER BY c.name, ce.email
+        LIMIT 20
+    ''', (f'%{q}%', f'%{q}%', f'%{q}%')).fetchall()
+
+    for row in contact_rows:
+        email = (row['email'] or '').strip().lower()
+        if not email or email in seen:
+            continue
+        seen.add(email)
+        rows.append({
+            'email': email,
+            'name': row['name'] or '',
+            'label': row['label'] or '',
+            'source': 'contact',
+        })
+
+    if len(rows) < 20:
+        gmail_rows = conn.execute('''
+            SELECT from_address, to_address
+            FROM gmail_messages
+            WHERE lower(COALESCE(from_address, '')) LIKE ?
+               OR lower(COALESCE(to_address, '')) LIKE ?
+            ORDER BY date DESC
+            LIMIT 80
+        ''', (f'%{q}%', f'%{q}%')).fetchall()
+
+        for row in gmail_rows:
+            for raw in (row['from_address'], row['to_address']):
+                email = _extract_email(raw or '')
+                if not email or '@' not in email or email in seen:
+                    continue
+                if q not in email and q not in _norm_text(raw or ''):
+                    continue
+                seen.add(email)
+                rows.append({
+                    'email': email,
+                    'name': (raw or '').strip(),
+                    'label': '',
+                    'source': 'gmail',
+                })
+                if len(rows) >= 20:
+                    break
+            if len(rows) >= 20:
+                break
+
+    conn.close()
+    return jsonify(rows)
 
 
 # ── File preview ─────────────────────────────────────────────────────────────
@@ -173,6 +241,108 @@ def _resolve_subject(override: str, fallback: str, data: dict) -> str:
         return raw
 
 
+def _norm_text(value: str) -> str:
+    value = unicodedata.normalize('NFKD', value or '')
+    value = ''.join(ch for ch in value if not unicodedata.combining(ch))
+    return re.sub(r'[^a-z0-9@._+-]+', ' ', value.lower()).strip()
+
+
+def _word_set(value: str) -> set[str]:
+    stop = {
+        'de', 'du', 'des', 'le', 'la', 'les', 'un', 'une', 'et', 'a', 'au',
+        'aux', 'pour', 'sur', 'avec', 'sans', 'mois', 'email', 'mail',
+    }
+    return {w for w in _norm_text(value).split() if len(w) >= 3 and w not in stop}
+
+
+def _flatten_data(data) -> list[str]:
+    values = []
+    if isinstance(data, dict):
+        for value in data.values():
+            values.extend(_flatten_data(value))
+    elif isinstance(data, list):
+        for value in data:
+            values.extend(_flatten_data(value))
+    elif data is not None:
+        values.append(str(data))
+    return values
+
+
+@app.route('/api/compose/folder-suggest', methods=['POST'])
+def api_compose_folder_suggest():
+    body = request.get_json() or {}
+    subject = body.get('subject', '')
+    to_address = _extract_email(body.get('to_address', ''))
+    data_values = _flatten_data(body.get('data', {}))
+    haystack = ' '.join([subject, to_address, *data_values])
+    hay_words = _word_set(haystack)
+    hay_norm = _norm_text(haystack)
+    subject_email = None
+    match = re.search(r'[\w.+-]+@[\w-]+\.[\w.]+', subject or '')
+    if match:
+        subject_email = match.group(0).strip().lower()
+
+    conn = get_conn()
+    rows = conn.execute('''
+        SELECT c.id, c.name, c.folder_path, c.type,
+               GROUP_CONCAT(ce.email, ' ') AS emails
+        FROM contacts c
+        LEFT JOIN contact_emails ce ON ce.contact_id = c.id
+        GROUP BY c.id
+        ORDER BY c.name
+    ''').fetchall()
+    conn.close()
+
+    best = None
+    for row in rows:
+        contact = dict(row)
+        emails = [e.strip().lower() for e in (contact.get('emails') or '').split() if e.strip()]
+        score = 0
+        reasons = []
+
+        if to_address and to_address in emails:
+            score += 100
+            reasons.append('email destinataire')
+        if subject_email and subject_email in emails:
+            score += 95
+            reasons.append('email dans le sujet')
+
+        name_words = _word_set(contact['name'])
+        folder_words = _word_set(Path(contact['folder_path']).name)
+        data_overlap = sorted((name_words | folder_words) & hay_words)
+        if data_overlap:
+            score += min(len(data_overlap) * 18, 54)
+            reasons.append('mots: ' + ', '.join(data_overlap[:4]))
+
+        name_norm = _norm_text(contact['name'])
+        if name_norm and name_norm in hay_norm:
+            score += 45
+            reasons.append('nom complet')
+
+        if score and (best is None or score > best['score']):
+            best = {
+                'score': score,
+                'contact': {
+                    'id': contact['id'],
+                    'name': contact['name'],
+                    'folder_path': contact['folder_path'],
+                    'type': contact['type'],
+                },
+                'reasons': reasons,
+            }
+
+    if not best:
+        return jsonify({'match': None, 'candidates': len(rows)})
+
+    return jsonify({
+        'match': best['contact'],
+        'score': best['score'],
+        'confidence': 'high' if best['score'] >= 90 else 'medium' if best['score'] >= 45 else 'low',
+        'reasons': best['reasons'],
+        'candidates': len(rows),
+    })
+
+
 # ── Compose ───────────────────────────────────────────────────────────────────
 
 @app.route('/api/compose/send', methods=['POST'])
@@ -188,6 +358,7 @@ def api_compose_send():
     business_meta   = request.form.get('business_metadata', '{}')
     is_draft        = request.form.get('is_draft', '0') == '1'
     payload_file    = request.form.get('payload_file', '').strip()
+    html_override   = request.form.get('html_override', '').strip()
 
     try:
         template_data = json.loads(template_data_s)
@@ -198,8 +369,12 @@ def api_compose_send():
     template_data.setdefault('recipient_email', to_address)
 
     try:
-        subject, html_body = render_template(template_id, template_data)
-        subject = _resolve_subject(subject_override, subject, template_data)
+        if html_override:
+            html_body = html_override
+            subject = _resolve_subject(subject_override, subject_override or 'Message', template_data)
+        else:
+            subject, html_body = render_template(template_id, template_data)
+            subject = _resolve_subject(subject_override, subject, template_data)
     except Exception as e:
         return jsonify({'error': f'Template error: {e}'}), 400
 
@@ -256,6 +431,7 @@ def api_compose_send():
         'cc':          cc_list,
         'subject':     subject_override,
         'attachments': default_atts,
+        'html_override': bool(html_override),
         'data':        template_data,
     })
 

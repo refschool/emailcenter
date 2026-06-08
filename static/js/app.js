@@ -8,6 +8,12 @@ const state = {
   attachments:       [],   // { type:'payload'|'upload', ... }
   syncIntervalHours: 6,
   currentPayloadFile: null,
+  suggestedFolder:   null,
+  composerEditor:    null,
+  isComposerMode:    false,
+  lastPreviewHtml:   '',
+  editedHtml:        '',
+  recipientSuggestTimer: null,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -109,14 +115,68 @@ async function loadTemplateList() {
   });
 }
 
+function syncSubjectFieldFromPayload(payload) {
+  document.getElementById('compose-subject').value = (payload?.subject || '').trim();
+}
+
+function syncRecipientFieldFromPayload(payload) {
+  document.getElementById('compose-to').value = (payload?.to || '').trim();
+}
+
+function syncPayloadSubject(payload) {
+  const subject = document.getElementById('compose-subject').value.trim();
+  payload.subject = subject;
+  document.getElementById('payload-raw').value = JSON.stringify(payload, null, 2);
+  return subject;
+}
+
+function syncPayloadRecipient(payload) {
+  const toAddress = document.getElementById('compose-to').value.trim();
+  payload.to = toAddress;
+  document.getElementById('payload-raw').value = JSON.stringify(payload, null, 2);
+  return toAddress;
+}
+
+function renderRecipientSuggestions(items) {
+  const list = document.getElementById('recipient-suggestions');
+  list.innerHTML = '';
+  (items || []).forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.email;
+    opt.label = [item.name, item.label, item.source].filter(Boolean).join(' · ');
+    list.appendChild(opt);
+  });
+}
+
+function scheduleRecipientSuggest() {
+  clearTimeout(state.recipientSuggestTimer);
+  state.recipientSuggestTimer = setTimeout(async () => {
+    const q = document.getElementById('compose-to').value.trim();
+    if (q.length < 2) {
+      renderRecipientSuggestions([]);
+      return;
+    }
+    try {
+      const items = await apiFetch('GET', `/api/recipients/suggest?q=${encodeURIComponent(q)}`);
+      renderRecipientSuggestions(items);
+    } catch (e) {
+      console.error('recipient suggest error', e);
+    }
+  }, 180);
+}
+
 async function onTemplateChange(templateId) {
   if (!templateId) return;
   try {
     const result  = await apiFetch('GET', `/api/payloads/${templateId}`);
     const payload = result.payload || {};
     state.currentPayloadFile = result.file || null;
+    state.lastPreviewHtml = '';
+    state.editedHtml = '';
 
     document.getElementById('payload-raw').value = JSON.stringify(payload, null, 2);
+    syncRecipientFieldFromPayload(payload);
+    syncSubjectFieldFromPayload(payload);
 
     // Reset payload attachments, keep user uploads
     state.attachments = state.attachments.filter(a => a.type === 'upload');
@@ -145,20 +205,190 @@ async function doPreview() {
   try { payload = JSON.parse(document.getElementById('payload-raw').value || '{}'); }
   catch { setResult('Invalid JSON in payload', true); return; }
 
-  const toAddress = (payload.to || '').trim();
-  const subject   = (payload.subject || '').trim();
+  const toAddress = syncPayloadRecipient(payload);
+  const subject   = syncPayloadSubject(payload);
   const data      = payload.data || {};
-
-  document.getElementById('preview-to').textContent = toAddress ? `To: ${toAddress}` : '';
 
   try {
     const r = await apiFetch('POST', '/api/preview', { template_id: templateId, data, to_address: toAddress, subject });
-    document.getElementById('preview-subject').textContent =
-      r.subject ? `Subject: ${r.subject}` : '';
+    state.lastPreviewHtml = r.html || '';
+    if (!state.isComposerMode) state.editedHtml = '';
     document.getElementById('preview-frame').srcdoc = r.html;
+    if (state.isComposerMode) setComposerHtml(state.lastPreviewHtml);
+    await suggestComposeFolder(true);
   } catch (e) {
     setResult(`Preview error: ${e.message}`, true);
   }
+}
+
+function blankEmailHtml() {
+  return '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#222;"><p></p></div>';
+}
+
+function ensureCustomPayload() {
+  const raw = document.getElementById('payload-raw');
+  let payload = null;
+  try { payload = JSON.parse(raw.value || '{}'); } catch { payload = {}; }
+  if (!raw.value.trim() || Object.keys(payload).length === 0) {
+    payload = {
+      template_id: 'custom',
+      to: document.getElementById('compose-to').value.trim(),
+      subject: document.getElementById('compose-subject').value.trim(),
+      data: {},
+    };
+    raw.value = JSON.stringify(payload, null, 2);
+    syncRecipientFieldFromPayload(payload);
+    syncSubjectFieldFromPayload(payload);
+  }
+}
+
+function ensureComposerEditor() {
+  if (state.composerEditor) return state.composerEditor;
+  if (!window.Jodit) {
+    setResult('Jodit editor is not loaded. Check your internet connection.', true);
+    return null;
+  }
+  state.composerEditor = Jodit.make('#composer-editor', {
+    height: '100%',
+    minHeight: 420,
+    toolbarAdaptive: false,
+    askBeforePasteHTML: false,
+    askBeforePasteFromWord: false,
+    buttons: [
+      'bold', 'italic', 'underline', '|',
+      'ul', 'ol', '|',
+      'font', 'fontsize', 'brush', '|',
+      'left', 'center', 'right', '|',
+      'link', 'table', '|',
+      'undo', 'redo', '|',
+      'source',
+    ],
+  });
+  state.composerEditor.events.on('change', () => {
+    state.editedHtml = state.composerEditor.value;
+  });
+  return state.composerEditor;
+}
+
+function setComposerHtml(html) {
+  const editor = ensureComposerEditor();
+  if (!editor) return;
+  editor.value = html || blankEmailHtml();
+  state.editedHtml = editor.value;
+}
+
+async function openComposer() {
+  let html = state.lastPreviewHtml;
+  const templateId = document.getElementById('template-select').value;
+
+  if (templateId && !html) {
+    await doPreview();
+    html = state.lastPreviewHtml;
+  }
+  if (!templateId && !html) {
+    ensureCustomPayload();
+    html = blankEmailHtml();
+  }
+
+  setComposerHtml(html || blankEmailHtml());
+  state.isComposerMode = true;
+  document.getElementById('preview-title').textContent = 'Composer';
+  document.getElementById('btn-compose-mode').textContent = 'Preview';
+  document.getElementById('preview-frame').style.display = 'none';
+  document.getElementById('composer-panel').style.display = '';
+}
+
+function closeComposer() {
+  if (state.composerEditor) {
+    state.editedHtml = state.composerEditor.value;
+    document.getElementById('preview-frame').srcdoc = state.editedHtml;
+  }
+  state.isComposerMode = false;
+  document.getElementById('preview-title').textContent = 'Preview';
+  document.getElementById('btn-compose-mode').textContent = 'Composer';
+  document.getElementById('composer-panel').style.display = 'none';
+  document.getElementById('preview-frame').style.display = '';
+}
+
+async function toggleComposerMode() {
+  if (state.isComposerMode) {
+    closeComposer();
+  } else {
+    await openComposer();
+  }
+}
+
+async function suggestComposeFolder(silent = false) {
+  let payload;
+  try { payload = JSON.parse(document.getElementById('payload-raw').value || '{}'); }
+  catch {
+    if (!silent) setResult('Invalid JSON in payload', true);
+    return;
+  }
+
+  const templateId = document.getElementById('template-select').value || payload.template_id || '';
+  const body = {
+    template_id: templateId,
+    to_address: syncPayloadRecipient(payload),
+    subject: syncPayloadSubject(payload),
+    data: payload.data || {},
+  };
+
+  const btn = document.getElementById('btn-folder-suggest');
+  if (btn && !silent) {
+    btn.disabled = true;
+    btn.textContent = 'Analyse...';
+  }
+
+  try {
+    const result = await apiFetch('POST', '/api/compose/folder-suggest', body);
+    state.suggestedFolder = result.match || null;
+    renderFolderSuggestion(result);
+  } catch (e) {
+    state.suggestedFolder = null;
+    renderFolderSuggestion({ error: e.message });
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Deviner dossier';
+    }
+  }
+}
+
+function renderFolderSuggestion(result = {}) {
+  const el = document.getElementById('folder-suggestion');
+  if (!el) return;
+
+  if (result.error) {
+    el.className = 'folder-suggestion folder-suggestion--empty';
+    el.innerHTML = `<span class="err">${esc(result.error)}</span>`;
+    return;
+  }
+
+  if (!result.match) {
+    el.className = 'folder-suggestion folder-suggestion--empty';
+    el.textContent = result.candidates
+      ? 'Aucun contact ne correspond au sujet.'
+      : 'Aucun contact disponible.';
+    return;
+  }
+
+  const contact = result.match;
+  const reasons = (result.reasons || []).join(' · ');
+  el.className = 'folder-suggestion';
+  el.innerHTML = `
+    <div class="folder-suggestion-title">${esc(contact.name)} · ${esc(result.confidence || 'match')}</div>
+    <div class="folder-suggestion-path">${esc(contact.folder_path)}</div>
+    <div class="hint">${esc(reasons || `score ${result.score || 0}`)}</div>
+    <div class="folder-suggestion-actions">
+      <button class="btn btn-sm btn-outline" id="btn-browse-suggested" type="button">Browse</button>
+    </div>
+  `;
+  document.getElementById('btn-browse-suggested').addEventListener('click', () => {
+    const target = document.createElement('input');
+    target.value = contact.folder_path;
+    openFolderBrowser(target, contact.folder_path);
+  });
 }
 
 // ── Compose — attachments ─────────────────────────────────────────────────────
@@ -228,15 +458,21 @@ function renderAttachments() {
 // ── Compose — send / draft ────────────────────────────────────────────────────
 
 async function composeSend(isDraft) {
-  const templateId = document.getElementById('template-select').value;
-  if (!templateId) { setResult('Select a template first.', true); return; }
+  let templateId = document.getElementById('template-select').value;
 
   let payload;
   try { payload = JSON.parse(document.getElementById('payload-raw').value || '{}'); }
   catch { setResult('Invalid JSON in payload', true); return; }
 
-  const toAddress   = (payload.to || '').trim();
-  const subject     = (payload.subject || '').trim();
+  if (state.isComposerMode && state.composerEditor) {
+    state.editedHtml = state.composerEditor.value;
+  }
+  const htmlOverride = (state.editedHtml || '').trim();
+  if (!templateId && htmlOverride) templateId = 'custom';
+  if (!templateId) { setResult('Select a template first, or use Composer for a blank email.', true); return; }
+
+  const toAddress   = syncPayloadRecipient(payload);
+  const subject     = syncPayloadSubject(payload);
   const templateData = payload.data || {};
   const ccRaw       = payload.cc;
   const ccList      = Array.isArray(ccRaw)
@@ -258,6 +494,7 @@ async function composeSend(isDraft) {
   fd.append('template_data',     JSON.stringify(templateData));
   fd.append('business_metadata', businessMeta);
   fd.append('is_draft',          isDraft ? '1' : '0');
+  if (htmlOverride) fd.append('html_override', htmlOverride);
 
   const payloadAtts = [];
   let uploadIdx = 0;
@@ -287,11 +524,21 @@ async function composeSend(isDraft) {
     if (!isDraft) {
       document.getElementById('template-select').value   = '';
       document.getElementById('payload-raw').value       = '';
+      document.getElementById('compose-to').value        = '';
+      document.getElementById('compose-subject').value   = '';
       document.getElementById('business-metadata').value = '';
-      document.getElementById('preview-to').textContent  = '';
       state.attachments        = [];
       state.currentPayloadFile = null;
+      state.suggestedFolder    = null;
+      state.lastPreviewHtml    = '';
+      state.editedHtml         = '';
+      document.getElementById('preview-frame').srcdoc = '';
+      if (state.composerEditor) {
+        state.composerEditor.value = '';
+      }
+      if (state.isComposerMode) closeComposer();
       renderAttachments();
+      renderFolderSuggestion();
     }
   } catch (e) {
     setResult(e.message, true);
@@ -1130,13 +1377,33 @@ document.getElementById('template-select').addEventListener('change', e => {
     state.attachments = state.attachments.filter(a => a.type === 'upload');
     renderAttachments();
     document.getElementById('payload-raw').value     = '';
-    document.getElementById('preview-to').textContent = '';
+    document.getElementById('compose-to').value      = '';
+    document.getElementById('compose-subject').value = '';
   } else {
     onTemplateChange(e.target.value);
   }
 });
 
 document.getElementById('btn-preview').addEventListener('click', doPreview);
+document.getElementById('btn-compose-mode').addEventListener('click', toggleComposerMode);
+document.getElementById('btn-folder-suggest').addEventListener('click', () => suggestComposeFolder(false));
+document.getElementById('compose-subject').addEventListener('input', () => {
+  try {
+    const payload = JSON.parse(document.getElementById('payload-raw').value || '{}');
+    syncPayloadSubject(payload);
+  } catch {
+    // Keep typing fluid if the JSON payload is temporarily invalid.
+  }
+});
+document.getElementById('compose-to').addEventListener('input', () => {
+  scheduleRecipientSuggest();
+  try {
+    const payload = JSON.parse(document.getElementById('payload-raw').value || '{}');
+    syncPayloadRecipient(payload);
+  } catch {
+    // Keep typing fluid if the JSON payload is temporarily invalid.
+  }
+});
 document.getElementById('btn-send').addEventListener('click',  () => composeSend(false));
 document.getElementById('btn-draft').addEventListener('click', () => composeSend(true));
 document.getElementById('btn-sync').addEventListener('click',       () => triggerSync(false));
@@ -1231,6 +1498,9 @@ document.getElementById('payload-modal').addEventListener('click', e => {
 document.getElementById('btn-add-file').addEventListener('click', () =>
   document.getElementById('file-input').click()
 );
+document.getElementById('btn-attach-file').addEventListener('click', () =>
+  document.getElementById('file-input').click()
+);
 
 document.getElementById('file-input').addEventListener('change', e => {
   addFiles(Array.from(e.target.files));
@@ -1247,4 +1517,5 @@ document.getElementById('file-input').addEventListener('change', e => {
 
   await refreshStatus();
   await loadTemplateList();
+  await openComposer();
 })();
