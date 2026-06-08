@@ -1,0 +1,8 @@
+{
+  "to": "salim.khalfoun@yahoo.fr",
+  "subject": "Note moi sur Trustpilot",
+  "template_id": "notation_trustpilot",
+  "data": {
+    "prenom": "Salim"
+  }
+}

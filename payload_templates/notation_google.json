@@ -1,8 +1,8 @@
 {
-  "to": "",
+  "to": "salim.khalfoun@yahoo.fr",
   "subject": "Note moi sur Google",
   "template_id": "notation_google",
   "data": {
-    "prenom": ""
+    "prenom": "Salim"
   }
 }

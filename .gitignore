@@ -15,6 +15,12 @@ venv/
 
 # Database
 emailcenter.db
+*.db.bak
+*.db-wal
+*.db-shm
+
+# Logs
+logs/
 
 # Attachments (user uploads — single-use, not committed)
 attachments/*
