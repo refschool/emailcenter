@@ -345,6 +345,23 @@ def api_compose_folder_suggest():
 
 # ── Compose ───────────────────────────────────────────────────────────────────
 
+def _attachment_read_error(path: Path) -> str | None:
+    try:
+        if not path.is_file():
+            return f"Piece jointe illisible: {path} n'est pas un fichier."
+        with path.open('rb') as f:
+            f.read(1)
+        return None
+    except PermissionError:
+        return (
+            f"Impossible de lire la piece jointe '{path.name}'. "
+            "Le fichier est probablement ouvert ou verrouille par Excel/OneDrive. "
+            "Fermez-le puis reessayez, ou joignez une copie locale."
+        )
+    except OSError as e:
+        return f"Impossible de lire la piece jointe '{path.name}': {e}"
+
+
 @app.route('/api/compose/send', methods=['POST'])
 def api_compose_send():
     if not is_authenticated():
@@ -395,6 +412,9 @@ def api_compose_send():
         path = p.resolve() if p.is_absolute() else (project_root / p).resolve()
         if not path.exists():
             continue
+        read_error = _attachment_read_error(path)
+        if read_error:
+            return jsonify({'error': read_error}), 400
         mime = mimetypes.guess_type(str(path))[0] or 'application/octet-stream'
         saved_attachments.append({
             'path': str(path),
@@ -721,6 +741,7 @@ def _is_accessible_dir(p: Path) -> bool:
 def api_browse():
     import platform
     raw = request.args.get('path', '').strip()
+    include_files = request.args.get('include_files') == '1'
 
     if not raw:
         if platform.system() == 'Windows':
@@ -738,9 +759,25 @@ def api_browse():
         return jsonify({'error': 'Not found'}), 404
 
     try:
+        entries = []
+        for c in p.iterdir():
+            if _is_accessible_dir(c):
+                entries.append({'name': c.name, 'path': str(c), 'type': 'dir'})
+            elif include_files:
+                try:
+                    if c.is_file():
+                        entries.append({
+                            'name': c.name,
+                            'path': str(c),
+                            'type': 'file',
+                            'size': c.stat().st_size,
+                        })
+                except (PermissionError, OSError):
+                    continue
+
         entries = sorted(
-            [{'name': c.name, 'path': str(c)} for c in p.iterdir() if _is_accessible_dir(c)],
-            key=lambda e: e['name'].lower(),
+            entries,
+            key=lambda e: (e.get('type') != 'dir', e['name'].lower()),
         )
         if p.parent == p:
             parent = '' if platform.system() == 'Windows' else None

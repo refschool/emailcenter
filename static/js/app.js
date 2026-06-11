@@ -16,6 +16,10 @@ const state = {
   recipientSuggestTimer: null,
 };
 
+function pathFilename(path) {
+  return String(path || '').split(/[\\/]/).filter(Boolean).pop() || path;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function esc(str) {
@@ -391,12 +395,57 @@ function renderFolderSuggestion(result = {}) {
   });
 }
 
+function buildComposeFolderSuggestBodyFromFields() {
+  let payload = {};
+  try { payload = JSON.parse(document.getElementById('payload-raw').value || '{}'); } catch {}
+
+  const toAddress = document.getElementById('compose-to').value.trim() || payload.to || '';
+  const subject   = document.getElementById('compose-subject').value.trim() || payload.subject || '';
+  return {
+    template_id: document.getElementById('template-select').value || payload.template_id || '',
+    to_address: toAddress,
+    subject,
+    data: payload.data || {},
+  };
+}
+
+async function openMappedAttachmentBrowser() {
+  const btn = document.getElementById('btn-attach-file');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Recherche...';
+
+  try {
+    const result = await apiFetch('POST', '/api/compose/folder-suggest', buildComposeFolderSuggestBodyFromFields());
+    state.suggestedFolder = result.match || null;
+    renderFolderSuggestion(result);
+    openFileBrowser(result.match?.folder_path || '');
+  } catch (e) {
+    state.suggestedFolder = null;
+    renderFolderSuggestion({ error: e.message });
+    openFileBrowser('');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
 // ── Compose — attachments ─────────────────────────────────────────────────────
 
 function addFiles(files) {
   for (const file of files) {
     state.attachments.push({ type: 'upload', file, metadataText: '{}' });
   }
+  renderAttachments();
+}
+
+function addLocalAttachment(path, filename = '', size = null) {
+  state.attachments.push({
+    type: 'payload',
+    path,
+    filename: filename || pathFilename(path),
+    size,
+  });
   renderAttachments();
 }
 
@@ -427,7 +476,9 @@ function renderAttachments() {
   state.attachments.forEach((att, i) => {
     const isUpload  = att.type === 'upload';
     const name      = isUpload ? att.file.name : att.filename;
-    const meta      = isUpload ? `<span class="att-size">${fmtBytes(att.file.size)}</span>` : '';
+    const meta      = isUpload
+      ? `<span class="att-size">${fmtBytes(att.file.size)}</span>`
+      : (typeof att.size === 'number' ? `<span class="att-size">${fmtBytes(att.size)}</span>` : '');
     const previewBtn = canPreview(name)
       ? `<button class="btn btn-sm btn-outline" data-preview="${i}">Aperçu</button>`
       : '';
@@ -885,9 +936,14 @@ function tryParse(str) {
 
 let _fpData   = null;
 let _fpTarget = null;  // <input> to write selected path into
+let _fpMode   = 'folder';
 
 async function _fpBrowseTo(path) {
-  const url  = path ? `/api/browse?path=${encodeURIComponent(path)}` : '/api/browse';
+  const params = new URLSearchParams();
+  if (path) params.set('path', path);
+  if (_fpMode === 'file') params.set('include_files', '1');
+  const qs   = params.toString();
+  const url  = qs ? `/api/browse?${qs}` : '/api/browse';
   const list = document.getElementById('fp-list');
   list.innerHTML = '<li class="fp-message">Chargement…</li>';
   try {
@@ -895,13 +951,29 @@ async function _fpBrowseTo(path) {
     document.getElementById('fp-current').textContent = _fpData.path || 'Lecteurs disponibles';
     if (_fpData.entries.length) {
       list.innerHTML = _fpData.entries
-        .map(e => `<li class="fp-item" data-path="${esc(e.path)}">${esc(e.name)}</li>`)
+        .map(e => `
+          <li class="fp-item fp-item--${esc(e.type || 'dir')}"
+              data-path="${esc(e.path)}"
+              data-type="${esc(e.type || 'dir')}"
+              data-name="${esc(e.name)}"
+              data-size="${Number.isFinite(e.size) ? e.size : ''}">
+            <span>${esc(e.name)}</span>
+            ${e.type === 'file' && Number.isFinite(e.size) ? `<span class="fp-size">${fmtBytes(e.size)}</span>` : ''}
+          </li>`)
         .join('');
-      list.querySelectorAll('.fp-item').forEach(li =>
-        li.addEventListener('click', () => _fpBrowseTo(li.dataset.path))
-      );
+      list.querySelectorAll('.fp-item').forEach(li => {
+        li.addEventListener('click', () => {
+          if (li.dataset.type === 'file') {
+            const size = li.dataset.size ? Number(li.dataset.size) : null;
+            addLocalAttachment(li.dataset.path, li.dataset.name, size);
+            document.getElementById('folder-picker').style.display = 'none';
+          } else {
+            _fpBrowseTo(li.dataset.path);
+          }
+        });
+      });
     } else {
-      list.innerHTML = '<li class="fp-message">Aucun sous-dossier</li>';
+      list.innerHTML = `<li class="fp-message">${_fpMode === 'file' ? 'Aucun fichier ou sous-dossier' : 'Aucun sous-dossier'}</li>`;
     }
     const upBtn = document.getElementById('fp-up');
     upBtn.disabled = _fpData.parent === null;
@@ -912,7 +984,18 @@ async function _fpBrowseTo(path) {
 }
 
 function openFolderBrowser(targetInput, startPath = '') {
+  _fpMode = 'folder';
   _fpTarget = targetInput;
+  document.getElementById('fp-select').style.display = '';
+  document.getElementById('fp-select').textContent = 'Selectionner ce dossier';
+  document.getElementById('folder-picker').style.display = '';
+  _fpBrowseTo(startPath || '');
+}
+
+function openFileBrowser(startPath = '') {
+  _fpMode = 'file';
+  _fpTarget = null;
+  document.getElementById('fp-select').style.display = 'none';
   document.getElementById('folder-picker').style.display = '';
   _fpBrowseTo(startPath || '');
 }
@@ -1498,9 +1581,7 @@ document.getElementById('payload-modal').addEventListener('click', e => {
 document.getElementById('btn-add-file').addEventListener('click', () =>
   document.getElementById('file-input').click()
 );
-document.getElementById('btn-attach-file').addEventListener('click', () =>
-  document.getElementById('file-input').click()
-);
+document.getElementById('btn-attach-file').addEventListener('click', openMappedAttachmentBrowser);
 
 document.getElementById('file-input').addEventListener('change', e => {
   addFiles(Array.from(e.target.files));
