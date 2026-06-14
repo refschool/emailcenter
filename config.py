@@ -19,6 +19,7 @@ class Config:
     
     # Attachments
     attachments_dir: str = os.getenv('ATTACHMENTS_DIR', 'attachments')
+    attachment_favorites_file: str = os.getenv('ATTACHMENT_FAVORITES_FILE', 'attachments/favorites.txt')
 
     # Webhook
     payloads_dir: str    = os.getenv('PAYLOADS_DIR', 'payloads')

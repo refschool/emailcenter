@@ -16,6 +16,7 @@ const state = {
   recipientSuggestTimer: null,
   everythingResults: [],
   everythingQuery:   '',
+  favoriteAttachments: [],
 };
 
 function pathFilename(path) {
@@ -575,6 +576,12 @@ async function composeSend(isDraft) {
       false
     );
     if (!isDraft) {
+      document.dispatchEvent(new CustomEvent('emailcenter:attachments-sent', {
+        detail: {
+          attachments: payloadAtts,
+          email_id: r.id,
+        },
+      }));
       document.getElementById('template-select').value   = '';
       document.getElementById('payload-raw').value       = '';
       document.getElementById('compose-to').value        = '';
@@ -1070,6 +1077,43 @@ function _fpSetPagerState(stateObj) {
   nextBtn.disabled = !stateObj.hasNext;
 }
 
+function _fpRenderFavoriteAttachments(items) {
+  const select = document.getElementById('fp-favorites-select');
+  const wrap = document.getElementById('fp-favorites-wrap');
+  const list = Array.isArray(items) ? items : [];
+  state.favoriteAttachments = list;
+
+  if (!list.length) {
+    wrap.style.display = '';
+    select.innerHTML = '<option value="">Aucun favori</option>';
+    select.disabled = true;
+    return;
+  }
+
+  wrap.style.display = '';
+  select.disabled = false;
+  select.innerHTML = [
+    '<option value="">Fichier préféré...</option>',
+    ...list.map(item => `<option value="${esc(item.path)}">${esc(pathFilename(item.path))} (${Number(item.frequency) || 0})</option>`)
+  ].join('');
+}
+
+async function _fpLoadFavoriteAttachments() {
+  const select = document.getElementById('fp-favorites-select');
+  const wrap = document.getElementById('fp-favorites-wrap');
+  wrap.style.display = '';
+  select.disabled = true;
+  select.innerHTML = '<option value="">Chargement...</option>';
+
+  try {
+    const data = await apiFetch('GET', '/api/attachments/favorites');
+    _fpRenderFavoriteAttachments(data.items || []);
+  } catch (e) {
+    select.innerHTML = `<option value="">${esc(e.message)}</option>`;
+    select.disabled = true;
+  }
+}
+
 function _fpRenderEntries(entries, emptyMessage) {
   const list = document.getElementById('fp-list');
   if (!entries.length) {
@@ -1110,6 +1154,7 @@ function _fpConfigureView() {
   const isFileMode = _fpMode === 'file';
   document.getElementById('fp-select').style.display = isFileMode ? 'none' : '';
   document.getElementById('fp-search-wrap').style.display = isFileMode ? '' : 'none';
+  document.getElementById('fp-favorites-wrap').style.display = isFileMode ? '' : 'none';
   document.getElementById('fp-up').style.display = _fpView === 'browse' ? '' : 'none';
   document.getElementById('fp-pager').style.display = _fpView === 'search' ? '' : 'none';
   document.getElementById('fp-current').textContent = _fpView === 'search'
@@ -1226,6 +1271,7 @@ function openFileBrowser(startPath = '') {
   _fpSetSearchMeta('Entrer un terme puis valider avec Entree.');
   _fpSetPagerState(null);
   _fpConfigureView();
+  _fpLoadFavoriteAttachments();
   _fpBrowseTo(startPath || '');
 }
 
@@ -1701,6 +1747,14 @@ document.getElementById('compose-to').addEventListener('input', () => {
 });
 document.getElementById('btn-send').addEventListener('click',  () => composeSend(false));
 document.getElementById('btn-draft').addEventListener('click', () => composeSend(true));
+document.addEventListener('emailcenter:attachments-sent', async () => {
+  try {
+    await apiFetch('POST', '/api/attachments/favorites/rebuild', {});
+    await _fpLoadFavoriteAttachments();
+  } catch (e) {
+    console.error('favorite rebuild error', e);
+  }
+});
 document.getElementById('btn-sync').addEventListener('click',       () => triggerSync(false));
 document.getElementById('btn-sync-reset').addEventListener('click', () => triggerSync(false, true));
 document.getElementById('btn-filter').addEventListener('click', loadMessages);
@@ -1771,6 +1825,13 @@ document.getElementById('fp-search').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   e.preventDefault();
   _fpSearchEverything(e.target.value);
+});
+document.getElementById('fp-favorites-select').addEventListener('change', e => {
+  const path = e.target.value;
+  if (!path) return;
+  addLocalAttachment(path, pathFilename(path));
+  document.getElementById('folder-picker').style.display = 'none';
+  e.target.value = '';
 });
 document.getElementById('fp-page-prev').addEventListener('click', () => {
   if (!_fpSearchState.hasPrev) return;

@@ -3,6 +3,7 @@ import html
 import re
 import unicodedata
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
@@ -153,6 +154,90 @@ def api_file():
     if not path.exists():
         return 'Not found', 404
     return send_file(path, conditional=True)
+
+
+def _favorites_file_path() -> Path:
+    return Path(config.attachment_favorites_file)
+
+
+def _read_attachment_favorites() -> list[dict]:
+    path = _favorites_file_path()
+    if not path.exists():
+        return []
+
+    items: list[dict] = []
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except OSError:
+        return []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except Exception:
+            continue
+        fav_path = str(data.get('path', '')).strip()
+        if not fav_path:
+            continue
+        try:
+            frequency = int(data.get('frequency', 0))
+        except (TypeError, ValueError):
+            frequency = 0
+        items.append({'path': fav_path, 'frequency': max(frequency, 0)})
+
+    items.sort(key=lambda item: (-item['frequency'], item['path'].lower()))
+    return items
+
+
+def _write_attachment_favorites(items: list[dict]) -> None:
+    path = _favorites_file_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        json.dumps({'path': item['path'], 'frequency': int(item['frequency'])}, ensure_ascii=False)
+        for item in items
+        if item.get('path')
+    ]
+    path.write_text('\n'.join(lines) + ('\n' if lines else ''), encoding='utf-8')
+
+
+def _rebuild_attachment_favorites() -> list[dict]:
+    conn = get_conn()
+    counter: Counter[str] = Counter()
+    try:
+        rows = conn.execute(
+            "SELECT payload FROM composed_emails WHERE status = 'sent' AND payload IS NOT NULL"
+        ).fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row['payload'] or '{}')
+            except Exception:
+                continue
+            for att in payload.get('attachments', []) or []:
+                fav_path = str(att.get('path', '')).strip()
+                if fav_path:
+                    counter[fav_path] += 1
+    finally:
+        conn.close()
+
+    items = [{'path': fav_path, 'frequency': frequency} for fav_path, frequency in counter.most_common()]
+    _write_attachment_favorites(items)
+    return items
+
+
+@app.route('/api/attachments/favorites')
+def api_attachment_favorites():
+    items = _read_attachment_favorites()
+    if not items:
+        items = _rebuild_attachment_favorites()
+    return jsonify({'items': items})
+
+
+@app.route('/api/attachments/favorites/rebuild', methods=['POST'])
+def api_attachment_favorites_rebuild():
+    return jsonify({'items': _rebuild_attachment_favorites()})
 
 
 # ── Templates & payloads ──────────────────────────────────────────────────────
