@@ -14,6 +14,8 @@ const state = {
   lastPreviewHtml:   '',
   editedHtml:        '',
   recipientSuggestTimer: null,
+  everythingResults: [],
+  everythingQuery:   '',
 };
 
 function pathFilename(path) {
@@ -592,7 +594,17 @@ async function composeSend(isDraft) {
       renderFolderSuggestion();
     }
   } catch (e) {
-    setResult(e.message, true);
+    if (e.data?.code === 'attachment_locked') {
+      setResult(
+        `Piece jointe verrouillee : ${e.data.filename || 'fichier'}\n` +
+        'Fermez le fichier dans Excel, attendez la fin de la synchronisation OneDrive, puis cliquez a nouveau sur Send.',
+        true
+      );
+    } else if (e.data?.code === 'attachment_unreadable') {
+      setResult(`Piece jointe illisible : ${e.data.filename || e.message}`, true);
+    } else {
+      setResult(e.message, true);
+    }
   } finally {
     btnSend.disabled = btnDraft.disabled = false;
   }
@@ -937,6 +949,18 @@ function tryParse(str) {
 let _fpData   = null;
 let _fpTarget = null;  // <input> to write selected path into
 let _fpMode   = 'folder';
+let _fpView   = 'browse';
+let _fpSearchState = {
+  query: '',
+  offset: 0,
+  total: 0,
+  pageSize: 0,
+  hasPrev: false,
+  hasNext: false,
+  prevOffset: null,
+  nextOffset: null,
+  items: [],
+};
 
 async function _fpBrowseTo(path) {
   const params = new URLSearchParams();
@@ -1016,6 +1040,194 @@ function _wireFolderBrowser() {
 }
 
 // ── Contacts ──────────────────────────────────────────────────────────────────
+
+function _fpSetSearchMeta(text = '', isErr = false) {
+  const meta = document.getElementById('fp-search-meta');
+  meta.textContent = text;
+  meta.className = isErr ? 'fp-search-meta err' : 'fp-search-meta';
+}
+
+function _fpSetPagerState(stateObj) {
+  const pager = document.getElementById('fp-pager');
+  const prevBtn = document.getElementById('fp-page-prev');
+  const nextBtn = document.getElementById('fp-page-next');
+  const meta = document.getElementById('fp-pager-meta');
+
+  const hasResults = Boolean(stateObj && stateObj.query && Array.isArray(stateObj.items) && stateObj.items.length);
+  pager.style.display = hasResults ? '' : 'none';
+  if (!hasResults) {
+    meta.textContent = '';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    return;
+  }
+
+  const start = stateObj.offset + 1;
+  const end = stateObj.offset + stateObj.pageSize;
+  const shownEnd = stateObj.total ? Math.min(end, stateObj.total) : end;
+  meta.textContent = `${start} - ${shownEnd} / ${stateObj.total || shownEnd}`;
+  prevBtn.disabled = !stateObj.hasPrev;
+  nextBtn.disabled = !stateObj.hasNext;
+}
+
+function _fpRenderEntries(entries, emptyMessage) {
+  const list = document.getElementById('fp-list');
+  if (!entries.length) {
+    list.innerHTML = `<li class="fp-message">${emptyMessage}</li>`;
+    return;
+  }
+
+  list.innerHTML = entries
+    .map(e => `
+      <li class="fp-item fp-item--${esc(e.type || 'dir')}"
+          data-path="${esc(e.path)}"
+          data-type="${esc(e.type || 'dir')}"
+          data-name="${esc(e.name)}"
+          data-size="${Number.isFinite(e.size) ? e.size : ''}">
+        <div class="fp-item-body">
+          <span class="fp-item-label">${esc(e.name)}</span>
+          ${e.path ? `<span class="fp-item-path">${esc(e.path)}</span>` : ''}
+        </div>
+        ${e.type === 'file' && Number.isFinite(e.size) ? `<span class="fp-size">${fmtBytes(e.size)}</span>` : ''}
+      </li>`)
+    .join('');
+
+  list.querySelectorAll('.fp-item').forEach(li => {
+    li.addEventListener('click', () => {
+      if (li.dataset.type === 'file') {
+        const size = li.dataset.size ? Number(li.dataset.size) : null;
+        addLocalAttachment(li.dataset.path, li.dataset.name, size);
+        document.getElementById('folder-picker').style.display = 'none';
+      } else {
+        _fpView = 'browse';
+        _fpBrowseTo(li.dataset.path);
+      }
+    });
+  });
+}
+
+function _fpConfigureView() {
+  const isFileMode = _fpMode === 'file';
+  document.getElementById('fp-select').style.display = isFileMode ? 'none' : '';
+  document.getElementById('fp-search-wrap').style.display = isFileMode ? '' : 'none';
+  document.getElementById('fp-up').style.display = _fpView === 'browse' ? '' : 'none';
+  document.getElementById('fp-pager').style.display = _fpView === 'search' ? '' : 'none';
+  document.getElementById('fp-current').textContent = _fpView === 'search'
+    ? (_fpSearchState.query ? `Everything: ${_fpSearchState.query}` : 'Everything')
+    : (_fpData?.path || 'Lecteurs disponibles');
+
+  if (!isFileMode) {
+    document.getElementById('fp-search').value = '';
+    _fpSetSearchMeta('');
+  }
+}
+
+function _fpRenderSearchPage(data) {
+  const list = document.getElementById('fp-list');
+  _fpSearchState = {
+    query: data.query || '',
+    offset: Number(data.offset) || 0,
+    total: Number(data.total) || 0,
+    pageSize: Number(data.page_size) || (data.items || []).length,
+    hasPrev: Boolean(data.has_prev),
+    hasNext: Boolean(data.has_next),
+    prevOffset: data.prev_offset ?? null,
+    nextOffset: data.next_offset ?? null,
+    items: data.items || [],
+  };
+
+  _fpRenderEntries(
+    _fpSearchState.items,
+    'Aucun resultat.'
+  );
+  _fpSetSearchMeta(`${_fpSearchState.items.length} resultat(s)`);
+  _fpSetPagerState(_fpSearchState);
+}
+
+async function _fpSearchEverything(query, offset = 0) {
+  const q = String(query || '').trim();
+  const list = document.getElementById('fp-list');
+
+  if (q.length < 3) {
+    _fpSetSearchMeta('Entrer au moins 3 caracteres.');
+    _fpSetPagerState(null);
+    return;
+  }
+
+  _fpView = 'search';
+  _fpSearchState.query = q;
+  _fpSearchState.offset = offset;
+  _fpConfigureView();
+  list.innerHTML = '<li class="fp-message">Recherche Everything...</li>';
+  _fpSetSearchMeta('Chargement...');
+  _fpSetPagerState(null);
+
+  try {
+    const data = await apiFetch('GET', `/api/everything/search?q=${encodeURIComponent(q)}&offset=${offset}`);
+    _fpRenderSearchPage(data);
+  } catch (e) {
+    _fpSearchState.items = [];
+    list.innerHTML = `<li class="fp-message err">${esc(e.message)}</li>`;
+    _fpSetSearchMeta(e.message, true);
+    _fpSetPagerState(null);
+  }
+}
+
+async function _fpBrowseTo(path) {
+  const params = new URLSearchParams();
+  if (path) params.set('path', path);
+  if (_fpMode === 'file') params.set('include_files', '1');
+  const qs   = params.toString();
+  const url  = qs ? `/api/browse?${qs}` : '/api/browse';
+  const list = document.getElementById('fp-list');
+  _fpView = 'browse';
+  _fpConfigureView();
+  list.innerHTML = '<li class="fp-message">Chargement...</li>';
+  try {
+    _fpData = await apiFetch('GET', url);
+    _fpConfigureView();
+    _fpRenderEntries(
+      _fpData.entries,
+      _fpMode === 'file' ? 'Aucun fichier ou sous-dossier' : 'Aucun sous-dossier'
+    );
+    const upBtn = document.getElementById('fp-up');
+    upBtn.disabled = _fpData.parent === null;
+    upBtn.onclick  = () => _fpBrowseTo(_fpData.parent ?? '');
+  } catch (e) {
+    list.innerHTML = `<li class="fp-message err">${esc(e.message)}</li>`;
+  }
+}
+
+function openFolderBrowser(targetInput, startPath = '') {
+  _fpMode = 'folder';
+  _fpTarget = targetInput;
+  document.getElementById('fp-select').textContent = 'Selectionner ce dossier';
+  document.getElementById('folder-picker').style.display = '';
+  _fpConfigureView();
+  _fpBrowseTo(startPath || '');
+}
+
+function openFileBrowser(startPath = '') {
+  _fpMode = 'file';
+  _fpTarget = null;
+  _fpSearchState = {
+    query: '',
+    offset: 0,
+    total: 0,
+    pageSize: 0,
+    hasPrev: false,
+    hasNext: false,
+    prevOffset: null,
+    nextOffset: null,
+    items: [],
+  };
+  document.getElementById('folder-picker').style.display = '';
+  document.getElementById('fp-search').value = '';
+  _fpSetSearchMeta('Entrer un terme puis valider avec Entree.');
+  _fpSetPagerState(null);
+  _fpConfigureView();
+  _fpBrowseTo(startPath || '');
+}
 
 let contactsData   = [];
 let selContactId   = null;
@@ -1554,6 +1766,19 @@ document.getElementById('fp-select').addEventListener('click', () => {
 });
 document.getElementById('fp-close').addEventListener('click', () => {
   document.getElementById('folder-picker').style.display = 'none';
+});
+document.getElementById('fp-search').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  _fpSearchEverything(e.target.value);
+});
+document.getElementById('fp-page-prev').addEventListener('click', () => {
+  if (!_fpSearchState.hasPrev) return;
+  _fpSearchEverything(_fpSearchState.query, _fpSearchState.prevOffset || 0);
+});
+document.getElementById('fp-page-next').addEventListener('click', () => {
+  if (!_fpSearchState.hasNext) return;
+  _fpSearchEverything(_fpSearchState.query, _fpSearchState.nextOffset || 0);
 });
 document.getElementById('folder-picker').addEventListener('click', e => {
   if (e.target === e.currentTarget)

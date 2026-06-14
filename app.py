@@ -1,14 +1,18 @@
 import json
+import html
 import re
 import unicodedata
 import uuid
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask, redirect, request, jsonify, send_from_directory, send_file
+import requests
 
 from auth import build_auth_flow, exchange_and_save, is_authenticated, get_credentials
 from config import config
@@ -345,21 +349,40 @@ def api_compose_folder_suggest():
 
 # ── Compose ───────────────────────────────────────────────────────────────────
 
-def _attachment_read_error(path: Path) -> str | None:
+def _attachment_read_error(path: Path) -> dict | None:
+    filename = path.name
     try:
         if not path.is_file():
-            return f"Piece jointe illisible: {path} n'est pas un fichier."
+            return {
+                'code': 'attachment_unreadable',
+                'filename': filename,
+                'path': str(path),
+                'error': f"Piece jointe illisible: '{filename}' n'est pas un fichier.",
+            }
         with path.open('rb') as f:
             f.read(1)
         return None
-    except PermissionError:
-        return (
-            f"Impossible de lire la piece jointe '{path.name}'. "
-            "Le fichier est probablement ouvert ou verrouille par Excel/OneDrive. "
-            "Fermez-le puis reessayez, ou joignez une copie locale."
-        )
+    except PermissionError as e:
+        return {
+            'code': 'attachment_locked',
+            'filename': filename,
+            'path': str(path),
+            'error': (
+                f"La piece jointe '{filename}' est verrouillee ou ouverte dans une autre application. "
+                "Fermez le fichier dans Excel, attendez la fin de la synchronisation OneDrive, "
+                "puis cliquez a nouveau sur Send."
+            ),
+            'detail': str(e),
+        }
     except OSError as e:
-        return f"Impossible de lire la piece jointe '{path.name}': {e}"
+        code = 'attachment_locked' if getattr(e, 'winerror', None) in (32, 33) else 'attachment_unreadable'
+        return {
+            'code': code,
+            'filename': filename,
+            'path': str(path),
+            'error': f"Impossible de lire la piece jointe '{filename}': {e}",
+            'detail': str(e),
+        }
 
 
 @app.route('/api/compose/send', methods=['POST'])
@@ -414,7 +437,7 @@ def api_compose_send():
             continue
         read_error = _attachment_read_error(path)
         if read_error:
-            return jsonify({'error': read_error}), 400
+            return jsonify(read_error), 400
         mime = mimetypes.guess_type(str(path))[0] or 'application/octet-stream'
         saved_attachments.append({
             'path': str(path),
@@ -790,6 +813,140 @@ def api_browse():
 
 
 # ── Contacts ──────────────────────────────────────────────────────────────────
+
+class _EverythingResultsParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.items = []
+        self._in_row = False
+        self._row = None
+        self._cell = None
+        self._anchor_depth = 0
+        self._anchor_text = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'tr' and attrs.get('class', '').startswith('trdata'):
+            self._in_row = True
+            self._row = {'name': '', 'path': '', 'type': None}
+            self._cell = None
+            return
+
+        if not self._in_row:
+            return
+
+        if tag == 'td':
+            cell_class = attrs.get('class')
+            if cell_class in ('file', 'folder'):
+                self._cell = 'name'
+                self._row['type'] = cell_class
+            elif cell_class == 'pathdata':
+                self._cell = 'path'
+            else:
+                self._cell = None
+            return
+
+        if tag == 'a' and self._cell in ('name', 'path'):
+            self._anchor_depth += 1
+            if self._anchor_depth == 1:
+                self._anchor_text = []
+
+    def handle_data(self, data):
+        if self._in_row and self._cell in ('name', 'path') and self._anchor_depth > 0:
+            self._anchor_text.append(data)
+
+    def handle_endtag(self, tag):
+        if not self._in_row:
+            return
+
+        if tag == 'a' and self._cell in ('name', 'path') and self._anchor_depth > 0:
+            self._anchor_depth -= 1
+            if self._anchor_depth == 0:
+                value = html.unescape(''.join(self._anchor_text)).strip()
+                if self._cell == 'name' and not self._row['name']:
+                    self._row['name'] = value
+                elif self._cell == 'path' and not self._row['path']:
+                    self._row['path'] = value
+            return
+
+        if tag == 'td':
+            self._cell = None
+            return
+
+        if tag == 'tr':
+            if self._row and self._row['name'] and self._row['path']:
+                self.items.append(self._row)
+            self._in_row = False
+            self._row = None
+            self._cell = None
+            self._anchor_depth = 0
+            self._anchor_text = []
+
+
+def _parse_everything_page(page_html: str):
+    parser = _EverythingResultsParser()
+    parser.feed(page_html)
+    match = re.search(r'(\d+)\s+to\s+(\d+)\s+of\s+(\d+)\s+results', page_html, re.I)
+    total = int(match.group(3)) if match else None
+    return parser.items, total
+
+
+@app.route('/api/everything/search')
+def api_everything_search():
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 3:
+        return jsonify({'error': 'Query must be at least 3 characters'}), 400
+
+    base_url = 'http://localhost:81/'
+    try:
+        offset = max(int(request.args.get('offset', 0) or 0), 0)
+    except ValueError:
+        offset = 0
+    items = []
+    total = None
+
+    try:
+        params = {'search': q}
+        if offset:
+            params['offset'] = offset
+
+        resp = requests.get(
+            f'{base_url}?{urlencode(params)}',
+            timeout=10,
+            headers={'Accept': 'text/html'},
+        )
+        resp.raise_for_status()
+
+        page_items, page_total = _parse_everything_page(resp.text)
+        total = page_total
+
+        for item in page_items:
+            full_path = str(Path(item['path']) / item['name'])
+            items.append({
+                'name': item['name'],
+                'path': item['path'],
+                'full_path': full_path,
+                'type': item.get('type') or 'file',
+            })
+    except requests.RequestException as exc:
+        return jsonify({'error': f'Everything unavailable: {exc}'}), 502
+
+    page_size = len(items)
+    next_offset = offset + page_size if page_size and (total is None or offset + page_size < total) else None
+    prev_offset = max(offset - page_size, 0) if offset > 0 and page_size else None
+
+    return jsonify({
+        'query': q,
+        'offset': offset,
+        'page_size': page_size,
+        'total': total if total is not None else len(items),
+        'has_prev': offset > 0,
+        'has_next': next_offset is not None,
+        'prev_offset': prev_offset,
+        'next_offset': next_offset,
+        'items': items,
+    })
+
 
 import re as _re
 
