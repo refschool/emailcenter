@@ -1,9 +1,11 @@
+import json
+from pathlib import Path
+
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import Flow
 from config import config
-import pickle
-import os
 
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
@@ -11,20 +13,32 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.modify',
 ]
 
-def get_credentials() -> Credentials:
+def get_credentials() -> Credentials | None:
+    token_path = Path(config.token_file)
     creds = None
-    if os.path.exists(config.token_file):
-        with open(config.token_file, 'rb') as f:
-            creds = pickle.load(f)
+
+    if token_path.exists():
+        try:
+            creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+        except (ValueError, json.JSONDecodeError, OSError):
+            creds = None
 
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+        try:
+            creds.refresh(Request())
+        except RefreshError:
+            raise
         _save(creds)
 
-    return creds
+    if creds and creds.valid:
+        return creds
+    return None
 
 def is_authenticated() -> bool:
-    creds = get_credentials()
+    try:
+        creds = get_credentials()
+    except RefreshError:
+        return False
     return creds is not None and creds.valid
 
 def build_auth_flow(redirect_uri: str) -> Flow:
@@ -40,5 +54,6 @@ def exchange_and_save(flow: Flow, authorization_response: str):
     _save(flow.credentials)
 
 def _save(creds: Credentials):
-    with open(config.token_file, 'wb') as f:
-        pickle.dump(creds, f)
+    token_path = Path(config.token_file)
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.write_text(creds.to_json(), encoding='utf-8')

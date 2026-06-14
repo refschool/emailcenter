@@ -484,6 +484,14 @@ nav.tabs {
   border-bottom: 1px solid var(--border);
 }
 
+.mail-table th:first-child,
+.mail-table td:first-child {
+  width: 36px;
+  text-align: center;
+  padding-left: 10px;
+  padding-right: 8px;
+}
+
 .mail-table td {
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
@@ -498,10 +506,18 @@ nav.tabs {
 .mail-table tr { cursor: pointer; }
 .mail-table tr:hover td { background: var(--bg); }
 .mail-table tr.unread td { font-weight: 700; }
+.mail-table tr.is-selected td { background: rgba(37, 99, 235, 0.08); }
 
 .mail-table .col-att     { text-align: center; font-size: 13px; padding: 0; }
 .mail-table .col-date    { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .mail-table .col-snippet { color: var(--text-muted); font-size: 12px; }
+
+.mail-row-check {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  vertical-align: middle;
+}
 
 .empty-state {
   padding: 60px 20px;

@@ -1,12 +1,12 @@
 {
   "to": "referencementschool@gmail.com",
-  "subject": "Onboarding {{ course }} ",
+  "subject": "Onboarding DWWM",
   "template_id": "onboarding-dwwm",
   "data": {
-    "prenom": "",
+    "prenom": "Salim",
     "cours": "Symfony 6",
     "identifiant": "refschool",
-    "mot_de_passe": "",
-    "course": "Symfony 6"
+    "mot_de_passe": "motdepasse2026",
+    "recipient_email": "referencementschool@gmail.com"
   }
 }

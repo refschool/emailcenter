@@ -8,7 +8,7 @@ load_dotenv()
 class Config:
     # Gmail API
     credentials_file: str = os.getenv('GMAIL_CREDENTIALS_FILE', 'credentials.json')
-    token_file: str = os.getenv('GMAIL_TOKEN_FILE', 'token.pickle')
+    token_file: str = os.getenv('GMAIL_TOKEN_FILE', 'token.json')
     
     # Expéditeur
     sender_email: str = os.getenv('GMAIL_SENDER', 'yvon.huynh@gmail.com')

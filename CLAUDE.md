@@ -1,53 +1,137 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working in this repository.
 
 ## Commands
 
-```bash
-# Install dependencies
-pip install google-auth google-auth-oauthlib google-api-python-client jinja2 python-dotenv flask
+PowerShell:
 
-# Send an email from a payload file (CLI mode)
-python main.py payload.json
-
-# Start the HTTP server (Flask mode)
-python app.py
+```powershell
+python -m venv .venv
+.venv\Scripts\pip.exe install google-auth google-auth-oauthlib google-api-python-client jinja2 python-dotenv flask requests
+.venv\Scripts\python.exe app.py
+.venv\Scripts\python.exe main.py payload.json
 ```
 
-There is no test suite and no linter configured.
+Batch:
+
+```bat
+start_emailcenter.bat
+```
+
+There is no dedicated automated test suite. Use `py_compile` and the live Flask UI for verification.
 
 ## Architecture
 
-Two entry points, one shared core:
+Two entry points share the same rendering and mail sending core:
 
-- **`main.py`** — CLI entry point. Reads a JSON payload, renders the template, sends the email.
-- **`app.py`** — Flask HTTP server. Exposes `/auth`, `/oauth2callback`, `/send` (POST), `/status`. Delegates to the same `send_from_payload` from `main.py`.
+- `main.py` is the CLI sender. It loads a JSON payload, renders the template, and sends the email.
+- `app.py` is the Flask server. It serves the web UI and exposes the API used by the compose screen, Gmail sync, contacts, routing rules, Everything search, previews, and webhook ingestion.
 
 Core modules:
 
-- **`config.py`** — Single `Config` dataclass, instantiated as the `config` singleton. All paths and rate limits come from `.env` via this object. Everything else imports from it.
-- **`auth.py`** — Gmail OAuth2 via `google-auth-oauthlib`. Credentials stored in `token.pickle` (path from `config.token_file`). `get_credentials()` auto-refreshes expired tokens. `build_auth_flow()` / `exchange_and_save()` are used by `app.py` for the web OAuth flow; the CLI flow is not yet wired (must run `app.py /auth` first, then switch to CLI).
-- **`mailer.py`** — Builds a `MIMEMultipart('alternative')` message and calls `gmail.users().messages().send`. HTML-only (no plain-text part).
-- **`template_engine.py`** — Jinja2 `Environment` with `autoescape` on HTML. Injects `now` (UTC datetime) as a global. Subject is extracted from a `{% set subject = "..." %}` block at the top of each template via `template.make_module()`.
+- `config.py` centralizes environment-backed settings from `.env`.
+- `auth.py` handles Gmail OAuth2 and token refresh.
+- `mailer.py` builds the Gmail MIME message and sends it through the API.
+- `template_engine.py` renders Jinja2 templates and extracts the subject from `{% set subject = "..." %}`.
+- `database.py` owns SQLite access and migrations.
+- `gmail_sync.py` synchronizes Gmail into the local database.
+- `payload_watcher.py` manages the runtime `payloads/` directory.
+
+## Current routes
+
+Public / UI:
+
+- `GET /` main web UI
+- `GET /auth` start Gmail OAuth
+- `GET /oauth2callback` OAuth callback
+- `GET /api/status`
+- `GET /api/config`
+
+Compose / payloads:
+
+- `GET /api/templates`
+- `GET /api/payloads`
+- `GET /api/payloads/<template_id>`
+- `POST /api/webhook/payload`
+- `POST /api/preview`
+- `POST /api/compose/folder-suggest`
+- `POST /api/compose/send`
+
+Attachments / favorites:
+
+- `GET /api/file`
+- `GET /api/attachments/favorites`
+- `POST /api/attachments/favorites/rebuild`
+
+Gmail:
+
+- `POST /api/gmail/sync`
+- `GET /api/gmail/messages`
+- `GET /api/gmail/message/<gmail_message_id>`
+- `POST /api/gmail/message/<gmail_message_id>/read`
+- `POST /api/gmail/message/<gmail_message_id>/classify`
+- `POST /api/gmail/message/<gmail_message_id>/download`
+
+Contacts / routing:
+
+- `GET /api/recipients/suggest`
+- `GET /api/contacts`
+- `POST /api/contacts`
+- `PUT /api/contacts/<cid>`
+- `DELETE /api/contacts/<cid>`
+- `POST /api/contacts/<cid>/emails`
+- `DELETE /api/contact-emails/<eid>`
+- `GET /api/routing-rules`
+- `POST /api/routing-rules`
+- `PUT /api/routing-rules/<rid>`
+- `DELETE /api/routing-rules/<rid>`
+
+Browse / search:
+
+- `GET /api/browse`
+- `GET /api/everything/search`
+
+Mail utilities:
+
+- `GET /api/composed`
+- `POST /api/check_files`
+- `GET /api/gmail/message/<gmail_message_id>/download`
 
 ## Templates
 
-Located in `templates/`. Each `.html` file maps to a `template_id` in the payload. The subject **must** be declared as `{% set subject = "..." %}` at the top — it is extracted at render time, not passed in `data`.
+Templates live in `templates/`. Each `.html` file maps to a template id.
 
-| template_id      | Status  |
-|------------------|---------|
-| welcome          | Ready   |
-| invoice          | Stub    |
-| onboarding       | Stub    |
-| notation_google  | Stub    |
+Important rules:
 
-## Required files (not committed)
+- The subject must be declared at the top with `{% set subject = "..." %}`.
+- The preview endpoint renders the template with the payload `data` object.
+- Example payloads live in `payload_templates/`; runtime payloads created by the app live in `payloads/`.
+- `invoice.html` was removed because it was an empty stub.
 
-| File               | Purpose                                      |
-|--------------------|----------------------------------------------|
+## Security model
+
+- Flask now runs with `debug=False` by default.
+- Sensitive POST routes are guarded by a local-only `Host` check, an `Origin` check, and a CSRF token.
+- The CSRF token is embedded in the root HTML and sent by the frontend with `X-CSRF-Token`.
+- `WEBHOOK_SECRET` protects `POST /api/webhook/payload`.
+- Keep `OAUTHLIB_INSECURE_TRANSPORT=1` only for localhost development.
+- Gmail refresh failures surface as `401`; the fix is to re-run `/auth` and rebuild the JSON token.
+
+## Required files
+
+| File | Purpose |
+|------|---------|
 | `credentials.json` | Google Cloud OAuth 2.0 Desktop App client secret |
-| `token.pickle`     | Saved OAuth token, created on first auth     |
-| `.env`             | Overrides for `GMAIL_SENDER`, paths, limits  |
+| `token.json` | Saved OAuth token, created on first auth |
+| `.env` | Paths, sender identity, webhook secret, host allowlist, rate limits |
 
-Gmail send limits: 500 emails/day (free), 2000/day (Workspace). Configurable via `RATE_LIMIT_DAY` and `RATE_LIMIT_SEC` env vars, but rate limiting is not yet enforced in code — the values are stored in `config` only.
+Legacy `token.pickle` files are no longer read. Delete the old file and re-run `/auth` to rebuild the token in JSON format.
+
+## Known limits
+
+- Gmail rate limiting values exist in config, but enforcement is not implemented.
+- Everything search depends on the local Everything HTTP server on `http://localhost:81/`.
+- Local file attachments do not always preserve original source path metadata in the browser.
+- The app uses a local SQLite database; a corrupted state may require manual cleanup.
+- This project has no formal test suite; verification is currently manual plus `py_compile`.

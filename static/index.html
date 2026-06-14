@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EmailCenter</title>
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jodit@4.6.2/es2021/jodit.min.css">
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -123,11 +124,13 @@
       <input type="date" id="filter-date-to" title="To date">
       <input type="text" id="filter-recipient" placeholder="Recipient / sender">
       <input type="text" id="filter-label" placeholder="Gmail label">
-      <button class="btn btn-sm btn-outline" id="btn-filter">Filter</button>
+      <button type="button" class="btn btn-sm btn-outline" id="btn-filter">Filter</button>
+      <button type="button" class="btn btn-sm btn-outline" id="btn-delete-local" disabled>Delete local</button>
+      <span id="mail-selection-count" class="hint"></span>
       <div class="toolbar-spacer"></div>
       <span id="sync-status" class="hint"></span>
-      <button class="btn btn-sm btn-outline" id="btn-sync-reset" title="Réconcilie les 50 emails les plus récents par boîte (ajoute manquants, supprime effacés)">↺ Reconcile</button>
-      <button class="btn btn-sm btn-primary" id="btn-sync">Sync Gmail</button>
+      <button type="button" class="btn btn-sm btn-outline" id="btn-sync-reset" title="Réconcilie les 50 emails les plus récents par boîte (ajoute manquants, supprime effacés)">↺ Reconcile</button>
+      <button type="button" class="btn btn-sm btn-primary" id="btn-sync">Sync Gmail</button>
     </div>
 
     <div id="mail-body">
@@ -136,6 +139,9 @@
         <table class="mail-table">
           <thead>
             <tr>
+              <th style="width:36px; text-align:center">
+                <input type="checkbox" id="mail-select-all" title="Select visible messages">
+              </th>
               <th style="width:220px">From / To</th>
               <th>Subject</th>
               <th style="width:28px"></th>

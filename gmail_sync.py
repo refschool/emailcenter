@@ -174,15 +174,15 @@ def reconcile_sync(per_mailbox: int = 50) -> dict:
         local_id_set = {r['gmail_message_id'] for r in local_known}
 
         if local_known:
-            dates = [r['date'] for r in local_known if r['date']]
-            if dates:
-                window_floor = min(dates)
-                cur = conn.execute(
-                    f'DELETE FROM gmail_messages'
-                    f' WHERE mailbox = ? AND date >= ? AND gmail_message_id NOT IN ({placeholders})',
-                    [mailbox, window_floor] + gmail_ids
-                )
-                removed += cur.rowcount
+                dates = [r['date'] for r in local_known if r['date']]
+                if dates:
+                    window_floor = min(dates)
+                    cur = conn.execute(
+                        f'DELETE FROM gmail_messages'
+                        f' WHERE mailbox = ? AND date >= ? AND gmail_message_id NOT IN ({placeholders})',
+                        [mailbox, window_floor] + gmail_ids
+                    )
+                    removed += cur.rowcount
 
         # Insert any Gmail ID not yet in local DB
         for mid in gmail_ids:

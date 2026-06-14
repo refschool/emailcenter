@@ -3,6 +3,7 @@
   "subject": "Note moi sur Trustpilot",
   "template_id": "notation_trustpilot",
   "data": {
-    "prenom": "Salim"
+    "prenom": "Salim",
+    "recipient_email": "salim.khalfoun@yahoo.fr"
   }
 }

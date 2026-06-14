@@ -17,6 +17,9 @@ const state = {
   everythingResults: [],
   everythingQuery:   '',
   favoriteAttachments: [],
+  currentMessages:   [],
+  mailSelection:     new Set(),
+  lastMailSelectionIndex: null,
 };
 
 function pathFilename(path) {
@@ -56,15 +59,27 @@ function setResult(msg, isErr) {
   el.className   = isErr ? 'err' : 'ok';
 }
 
+function getCsrfToken() {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  return meta ? meta.content : '';
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
 
 async function apiFetch(method, path, body = null, isForm = false) {
   const opts = { method };
+  if (method !== 'GET' && method !== 'HEAD') {
+    const csrfToken = getCsrfToken();
+    if (csrfToken) {
+      opts.headers = { ...(opts.headers || {}), 'X-CSRF-Token': csrfToken };
+    }
+    opts.credentials = 'same-origin';
+  }
   if (body) {
     if (isForm) {
       opts.body = body;
     } else {
-      opts.headers = { 'Content-Type': 'application/json' };
+      opts.headers = { ...(opts.headers || {}), 'Content-Type': 'application/json' };
       opts.body = JSON.stringify(body);
     }
   }
@@ -620,6 +635,7 @@ async function composeSend(isDraft) {
 // ── Mail — messages ───────────────────────────────────────────────────────────
 
 async function loadMessages() {
+  clearMailSelection();
   const params = new URLSearchParams({ mailbox: state.currentMailbox });
   const dateFrom  = document.getElementById('filter-date-from').value;
   const dateTo    = document.getElementById('filter-date-to').value;
@@ -672,6 +688,123 @@ function renderMessages(msgs) {
     tr.addEventListener('click', () => openMailTray(m, tr));
     tbody.appendChild(tr);
   });
+}
+
+function clearMailSelection() {
+  state.mailSelection.clear();
+  state.lastMailSelectionIndex = null;
+  syncMailSelectionControls();
+}
+
+function syncMailSelectionControls() {
+  const countEl = document.getElementById('mail-selection-count');
+  const btnDelete = document.getElementById('btn-delete-local');
+  const selectAll = document.getElementById('mail-select-all');
+  const count = state.mailSelection.size;
+
+  if (countEl) countEl.textContent = count ? `${count} selected` : '';
+  if (btnDelete) btnDelete.disabled = count === 0;
+
+  if (selectAll) {
+    const visibleIds = state.currentMessages
+      .map(m => m.gmail_message_id)
+      .filter(Boolean);
+    const visibleSelected = visibleIds.filter(id => state.mailSelection.has(id)).length;
+    selectAll.checked = visibleIds.length > 0 && visibleSelected === visibleIds.length;
+    selectAll.indeterminate = visibleSelected > 0 && visibleSelected < visibleIds.length;
+  }
+}
+
+function handleMailSelectionClick(index, evt) {
+  const msg = state.currentMessages[index];
+  if (!msg || !msg.gmail_message_id) return;
+
+  const isRange = (evt.shiftKey || evt.ctrlKey || evt.metaKey) && state.lastMailSelectionIndex != null;
+
+  if (isRange) {
+    const start = Math.min(state.lastMailSelectionIndex, index);
+    const end = Math.max(state.lastMailSelectionIndex, index);
+    for (let i = start; i <= end; i++) {
+      const row = state.currentMessages[i];
+      if (row?.gmail_message_id) state.mailSelection.add(row.gmail_message_id);
+    }
+    state.lastMailSelectionIndex = index;
+  } else {
+    if (state.mailSelection.has(msg.gmail_message_id)) {
+      state.mailSelection.delete(msg.gmail_message_id);
+    } else {
+      state.mailSelection.add(msg.gmail_message_id);
+    }
+    state.lastMailSelectionIndex = index;
+  }
+
+  renderMessages(state.currentMessages);
+}
+
+async function deleteSelectedLocalMessages() {
+  const ids = Array.from(state.mailSelection);
+  if (!ids.length) return;
+
+  if (!confirm(`Delete ${ids.length} local message(s) from EmailCenter?`)) return;
+
+  try {
+    await apiFetch('POST', '/api/gmail/messages/delete-local', { gmail_message_ids: ids });
+    closeMailTray();
+    clearMailSelection();
+    await loadMessages();
+  } catch (e) {
+    setResult(`Local delete error: ${e.message}`, true);
+  }
+}
+
+function renderMessages(msgs) {
+  state.currentMessages = Array.isArray(msgs) ? msgs : [];
+  const tbody = document.getElementById('mail-tbody');
+  const empty = document.getElementById('mail-empty');
+  tbody.innerHTML = '';
+
+  if (!state.currentMessages.length) {
+    empty.style.display = '';
+    syncMailSelectionControls();
+    return;
+  }
+  empty.style.display = 'none';
+
+  const isSent = state.currentMailbox === 'SENT';
+
+  state.currentMessages.forEach((m, idx) => {
+    const addr = isSent
+      ? (m.to_address   || 'â€”')
+      : (m.from_address || 'â€”');
+
+    const tr = document.createElement('tr');
+    tr.dataset.index = String(idx);
+    tr.dataset.messageId = m.gmail_message_id || '';
+    if (state.mailSelection.has(m.gmail_message_id)) tr.classList.add('is-selected');
+    if (isUnread(m)) tr.classList.add('unread');
+    tr.innerHTML = `
+      <td>
+        <input type="checkbox" class="mail-row-check" data-mail-select="${idx}" ${state.mailSelection.has(m.gmail_message_id) ? 'checked' : ''}>
+      </td>
+      <td title="${esc(addr)}">${esc(addr)}</td>
+      <td title="${esc(m.subject)}">${esc(m.subject || '(no subject)')}</td>
+      <td class="col-att">${m.has_attachment ? 'ðŸ“Ž' : ''}</td>
+      <td class="col-date">${fmtDate(m.date)}</td>
+      <td class="col-snippet">${esc(m.snippet || '')}</td>
+    `;
+    tr.addEventListener('click', () => openMailTray(m, tr));
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('[data-mail-select]').forEach(cb => {
+    cb.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleMailSelectionClick(Number(cb.dataset.mailSelect), e);
+    });
+  });
+
+  syncMailSelectionControls();
 }
 
 function isUnread(m) {
@@ -1681,6 +1814,12 @@ function switchTab(tab) {
 
 function switchMailbox(mailbox) {
   state.currentMailbox = mailbox;
+  if (mailbox === 'INBOX') {
+    state.currentCategory = 'PRIMARY';
+    document.querySelectorAll('.mail-categories .cat-chip').forEach(b =>
+      b.classList.toggle('active', b.dataset.category === 'PRIMARY')
+    );
+  }
   document.querySelectorAll('.mail-subtabs .subtab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.mailbox === mailbox)
   );
@@ -1747,6 +1886,22 @@ document.getElementById('compose-to').addEventListener('input', () => {
 });
 document.getElementById('btn-send').addEventListener('click',  () => composeSend(false));
 document.getElementById('btn-draft').addEventListener('click', () => composeSend(true));
+document.getElementById('btn-delete-local').addEventListener('click', (e) => {
+  e.preventDefault();
+  deleteSelectedLocalMessages();
+});
+document.getElementById('mail-select-all').addEventListener('change', (e) => {
+  if (!state.currentMessages.length) return;
+  if (e.target.checked) {
+    state.currentMessages.forEach(m => {
+      if (m.gmail_message_id) state.mailSelection.add(m.gmail_message_id);
+    });
+  } else {
+    state.mailSelection.clear();
+  }
+  state.lastMailSelectionIndex = null;
+  renderMessages(state.currentMessages);
+});
 document.addEventListener('emailcenter:attachments-sent', async () => {
   try {
     await apiFetch('POST', '/api/attachments/favorites/rebuild', {});

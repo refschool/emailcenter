@@ -1,19 +1,22 @@
 import json
 import html
+import os
 import re
 import unicodedata
 import uuid
+import secrets
 from collections import Counter
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, redirect, request, jsonify, send_from_directory, send_file
+from flask import Flask, redirect, request, jsonify, send_from_directory, send_file, session, make_response, render_template_string
 import requests
+from google.auth.exceptions import RefreshError
 
 from auth import build_auth_flow, exchange_and_save, is_authenticated, get_credentials
 from config import config
@@ -24,6 +27,12 @@ import gmail_sync
 import payload_watcher
 
 app = Flask(__name__, static_folder='static', static_url_path='')
+app.secret_key = config.webhook_secret or 'emailcenter-dev-secret'
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=False,
+)
 
 REDIRECT_URI = 'http://localhost:5000/oauth2callback'
 _flows: dict = {}
@@ -36,7 +45,12 @@ payload_watcher.ensure_dirs()
 
 @app.route('/')
 def index():
-    return send_from_directory(app.static_folder, 'index.html')
+    index_path = Path(app.static_folder) / 'index.html'
+    html_text = index_path.read_text(encoding='utf-8')
+    session['ui_host'] = _host_without_port(request.host)
+    response = make_response(render_template_string(html_text, csrf_token=_ensure_csrf_token()))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -59,6 +73,26 @@ def oauth2callback():
     return redirect('/')
 
 
+@app.before_request
+def _protect_sensitive_requests():
+    if request.method != 'POST':
+        return None
+
+    if request.endpoint == 'api_webhook_payload':
+        return None
+
+    if not _request_host_allowed():
+        return jsonify({'error': 'Forbidden host'}), 403
+
+    if not _request_origin_allowed():
+        return jsonify({'error': 'Forbidden origin'}), 403
+
+    if not _csrf_token_valid():
+        return jsonify({'error': 'CSRF token missing or invalid'}), 403
+
+    return None
+
+
 # ── Status & config ───────────────────────────────────────────────────────────
 
 @app.route('/api/status')
@@ -75,6 +109,24 @@ def api_status():
 @app.route('/api/config')
 def api_config():
     return jsonify({'sync_interval_hours': config.gmail_sync_interval_hours})
+
+
+def _gmail_credentials_or_401():
+    try:
+        creds = get_credentials()
+    except RefreshError:
+        return None, (
+            jsonify({
+                'error': "Token expiré ou révoqué. Veuillez renouveler l'authentification.",
+                'auth_expired': True,
+            }),
+            401,
+        )
+
+    if not creds:
+        return None, (jsonify({'error': 'Not authenticated. Visit /auth first.'}), 401)
+
+    return creds, None
 
 
 @app.route('/api/recipients/suggest')
@@ -250,7 +302,7 @@ def api_templates():
 
 @app.route('/api/payloads')
 def api_payloads_list():
-    files = sorted(payload_watcher.PAYLOADS_DIR.glob('*.json'), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = _payload_example_files()
     result = []
     for p in files:
         try:
@@ -263,11 +315,7 @@ def api_payloads_list():
 
 @app.route('/api/payloads/<template_id>')
 def api_payload(template_id):
-    candidates = sorted(
-        payload_watcher.PAYLOADS_DIR.glob(f'{template_id}_*.json'),
-        key=lambda p: p.stat().st_mtime,
-    )
-    path = candidates[0] if candidates else payload_watcher.PAYLOADS_DIR / f'{template_id}.json'
+    path = _payload_example_path(template_id)
     if not path.exists():
         return jsonify({'file': None, 'payload': {}})
     return jsonify({
@@ -328,6 +376,108 @@ def _resolve_subject(override: str, fallback: str, data: dict) -> str:
         return Environment(autoescape=False).from_string(raw).render(**data)
     except Exception:
         return raw
+
+
+def _ensure_csrf_token() -> str:
+    token = session.get('csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session['csrf_token'] = token
+    return token
+
+
+def _origin_value(value: str | None) -> str:
+    if not value:
+        return ''
+    try:
+        parsed = urlparse(value)
+        if not parsed.scheme or not parsed.netloc:
+            return ''
+        return f'{parsed.scheme}://{parsed.netloc}'
+    except Exception:
+        return ''
+
+
+def _allowed_local_hosts() -> set[str]:
+    configured = os.getenv('EMAILCENTER_ALLOWED_HOSTS', '')
+    if configured.strip():
+        hosts = set()
+        for raw in configured.split(','):
+            raw = raw.strip()
+            if not raw:
+                continue
+            parsed = urlparse(raw if '://' in raw else f'//{raw}')
+            host = _host_without_port(parsed.netloc or parsed.path or raw)
+            if host:
+                hosts.add(host)
+        return hosts
+    return {'localhost', '127.0.0.1', '::1', 'emailcenter.local'}
+
+
+def _host_without_port(host: str) -> str:
+    host = (host or '').strip().lower()
+    if host.startswith('[') and ']' in host:
+        return host[1:host.index(']')]
+    if host.count(':') == 1:
+        return host.rsplit(':', 1)[0]
+    return host
+
+
+def _request_host_allowed() -> bool:
+    host = _host_without_port(request.host)
+    if host in _allowed_local_hosts():
+        return True
+    return host == (session.get('ui_host') or '')
+
+
+def _request_origin_allowed() -> bool:
+    expected = request.host_url.rstrip('/')
+    origin = _origin_value(request.headers.get('Origin')) or _origin_value(request.headers.get('Referer'))
+    return bool(origin) and origin == expected
+
+
+def _csrf_token_valid() -> bool:
+    token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token', '')
+    return bool(token) and token == session.get('csrf_token')
+
+
+def _payload_templates_dir() -> Path:
+    return Path(__file__).parent / 'payload_templates'
+
+
+def _payload_example_files() -> list[Path]:
+    runtime_dir = payload_watcher.PAYLOADS_DIR
+    seed_dir = _payload_templates_dir()
+
+    files_by_stem: dict[str, Path] = {}
+    for path in sorted(runtime_dir.glob('*.json'), key=lambda p: p.stat().st_mtime, reverse=True):
+        files_by_stem.setdefault(path.stem, path)
+    for path in sorted(seed_dir.glob('*.json'), key=lambda p: p.stat().st_mtime, reverse=True):
+        files_by_stem.setdefault(path.stem, path)
+
+    return sorted(files_by_stem.values(), key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def _payload_example_path(template_id: str) -> Path:
+    runtime_dir = payload_watcher.PAYLOADS_DIR
+    seed_dir = _payload_templates_dir()
+
+    candidates = sorted(
+        runtime_dir.glob(f'{template_id}_*.json'),
+        key=lambda p: p.stat().st_mtime,
+    )
+    if candidates:
+        return candidates[0]
+
+    runtime_path = runtime_dir / f'{template_id}.json'
+    if runtime_path.exists():
+        return runtime_path
+
+    seed_path = seed_dir / f'{template_id}.json'
+    if seed_path.exists():
+        return seed_path
+
+    return runtime_path
 
 
 def _norm_text(value: str) -> str:
@@ -472,8 +622,9 @@ def _attachment_read_error(path: Path) -> dict | None:
 
 @app.route('/api/compose/send', methods=['POST'])
 def api_compose_send():
-    if not is_authenticated():
-        return jsonify({'error': 'Not authenticated. Visit /auth first.'}), 401
+    _creds, auth_response = _gmail_credentials_or_401()
+    if auth_response:
+        return auth_response
 
     template_id      = request.form.get('template_id', '')
     to_address       = request.form.get('to_address', '').strip()
@@ -667,10 +818,10 @@ def api_composed():
 
 @app.route('/api/gmail/sync', methods=['POST'])
 def api_gmail_sync():
-    from google.auth.exceptions import RefreshError
     try:
-        if not is_authenticated():
-            return jsonify({'error': 'Not authenticated'}), 401
+        _creds, auth_response = _gmail_credentials_or_401()
+        if auth_response:
+            return auth_response
         mode = request.args.get('reset', '')
         if mode == 'full':
             result = gmail_sync.full_reset_sync()
@@ -691,12 +842,13 @@ def api_gmail_sync():
 
 @app.route('/api/gmail/message/<gmail_message_id>')
 def api_gmail_message(gmail_message_id):
-    if not is_authenticated():
-        return jsonify({'error': 'Not authenticated'}), 401
     try:
+        creds, auth_response = _gmail_credentials_or_401()
+        if auth_response:
+            return auth_response
         import base64 as _b64
         from googleapiclient.discovery import build
-        service = build('gmail', 'v1', credentials=get_credentials())
+        service = build('gmail', 'v1', credentials=creds)
         msg     = service.users().messages().get(
             userId='me', id=gmail_message_id, format='full'
         ).execute()
@@ -752,11 +904,12 @@ def api_gmail_message(gmail_message_id):
 
 @app.route('/api/gmail/message/<gmail_message_id>/read', methods=['POST'])
 def api_gmail_mark_read(gmail_message_id):
-    if not is_authenticated():
-        return jsonify({'error': 'Not authenticated'}), 401
     try:
+        creds, auth_response = _gmail_credentials_or_401()
+        if auth_response:
+            return auth_response
         from googleapiclient.discovery import build
-        service = build('gmail', 'v1', credentials=get_credentials())
+        service = build('gmail', 'v1', credentials=creds)
         service.users().messages().modify(
             userId='me', id=gmail_message_id,
             body={'removeLabelIds': ['UNREAD']},
@@ -783,8 +936,46 @@ def api_gmail_mark_read(gmail_message_id):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/gmail/messages')
+def _delete_local_gmail_messages(ids):
+    if not isinstance(ids, list) or not ids:
+        return jsonify({'error': 'No message ids specified'}), 400
+
+    cleaned_ids = []
+    seen = set()
+    for mid in ids:
+        mid = str(mid).strip()
+        if mid and mid not in seen:
+            seen.add(mid)
+            cleaned_ids.append(mid)
+
+    if not cleaned_ids:
+        return jsonify({'error': 'No message ids specified'}), 400
+
+    placeholders = ','.join('?' * len(cleaned_ids))
+    conn = get_conn()
+    with conn:
+        cur = conn.execute(
+            f'DELETE FROM gmail_messages WHERE gmail_message_id IN ({placeholders})',
+            cleaned_ids
+        )
+    conn.close()
+    return jsonify({'ok': True, 'deleted': cur.rowcount})
+
+
+@app.route('/api/gmail/messages/delete-local', methods=['POST'])
+def api_gmail_delete_local():
+    body = request.get_json(silent=True) or {}
+    return _delete_local_gmail_messages(body.get('gmail_message_ids', []))
+
+
+@app.route('/api/gmail/messages', methods=['GET', 'POST'])
 def api_gmail_messages():
+    if request.method == 'POST':
+        body = request.get_json(silent=True) or {}
+        if body.get('action') == 'delete-local' or body.get('gmail_message_ids'):
+            return _delete_local_gmail_messages(body.get('gmail_message_ids', []))
+        return jsonify({'error': 'Unsupported POST action'}), 400
+
     mailbox   = request.args.get('mailbox', 'INBOX')
     category  = request.args.get('category', '').strip().upper()
     date_from = request.args.get('date_from', '').strip()
@@ -1209,8 +1400,9 @@ def _match_routing_rule(rules: list, filename: str) -> dict | None:
 
 @app.route('/api/gmail/message/<gmail_message_id>/classify', methods=['POST'])
 def api_classify(gmail_message_id):
-    if not is_authenticated():
-        return jsonify({'error': 'Not authenticated'}), 401
+    creds, auth_response = _gmail_credentials_or_401()
+    if auth_response:
+        return auth_response
 
     conn = get_conn()
     row  = conn.execute(
@@ -1260,7 +1452,7 @@ def api_classify(gmail_message_id):
     conn.close()
 
     from googleapiclient.discovery import build
-    service = build('gmail', 'v1', credentials=get_credentials())
+    service = build('gmail', 'v1', credentials=creds)
     msg     = service.users().messages().get(
         userId='me', id=gmail_message_id, format='full'
     ).execute()
@@ -1305,8 +1497,9 @@ def api_check_files():
 
 @app.route('/api/gmail/message/<gmail_message_id>/download', methods=['POST'])
 def api_gmail_download(gmail_message_id):
-    if not is_authenticated():
-        return jsonify({'error': 'Not authenticated'}), 401
+    creds, auth_response = _gmail_credentials_or_401()
+    if auth_response:
+        return auth_response
 
     items = request.get_json()
     if not items:
@@ -1314,7 +1507,7 @@ def api_gmail_download(gmail_message_id):
 
     from googleapiclient.discovery import build
     import base64 as _b64
-    service = build('gmail', 'v1', credentials=get_credentials())
+    service = build('gmail', 'v1', credentials=creds)
 
     results = []
     for item in items:
@@ -1337,4 +1530,4 @@ def api_gmail_download(gmail_message_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
