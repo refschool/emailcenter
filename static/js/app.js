@@ -681,7 +681,7 @@ function renderMessages(msgs) {
     tr.innerHTML = `
       <td title="${esc(addr)}">${esc(addr)}</td>
       <td title="${esc(m.subject)}">${esc(m.subject || '(no subject)')}</td>
-      <td class="col-att">${m.has_attachment ? '📎' : ''}</td>
+      <td class="col-att">${m.has_attachment ? '&#128206;' : ''}</td>
       <td class="col-date">${fmtDate(m.date)}</td>
       <td class="col-snippet">${esc(m.snippet || '')}</td>
     `;
@@ -788,7 +788,7 @@ function renderMessages(msgs) {
       </td>
       <td title="${esc(addr)}">${esc(addr)}</td>
       <td title="${esc(m.subject)}">${esc(m.subject || '(no subject)')}</td>
-      <td class="col-att">${m.has_attachment ? 'ðŸ“Ž' : ''}</td>
+      <td class="col-att">${m.has_attachment ? '&#128206;' : ''}</td>
       <td class="col-date">${fmtDate(m.date)}</td>
       <td class="col-snippet">${esc(m.snippet || '')}</td>
     `;
@@ -944,7 +944,7 @@ async function triggerSync(silent = false, reset = false) {
   } finally {
     btn.disabled = btnReset.disabled = false;
     btn.innerHTML     = 'Sync Gmail';
-    btnReset.innerHTML = '↺ Reconcile';
+    btnReset.innerHTML = '<span aria-hidden="true">&#8634;</span> Reconcile';
   }
 }
 
